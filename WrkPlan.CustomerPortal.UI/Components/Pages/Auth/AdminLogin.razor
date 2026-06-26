@@ -1,0 +1,82 @@
+@page "/auth/admin-login"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Navigation
+
+<div style="display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 90px);padding:1rem;">
+    <div class="auth-box" style="--auth-accent:#4f46e5;border-color:rgba(79,70,229,0.25);box-shadow:var(--shadow-lg),0 0 50px rgba(79,70,229,0.18);">
+        <div class="auth-logo" style="background:linear-gradient(135deg,#4f46e5,#0ea5e9);">WP</div>
+        <p class="auth-kicker" style="color:#4f46e5;">Admin Hub</p>
+        <h1 class="auth-title">Admin Sign In</h1>
+        <p class="auth-sub">Access tenant provisioning, reports, billing, and operations.</p>
+
+        <EditForm Model="this" OnSubmit="SignInAsync" class="auth-form">
+            <div class="form-group">
+                <label>Admin Email</label>
+                <input @bind="Email" type="email" placeholder="admin@wrkplan.com" required />
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input @bind="Password" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" required />
+            </div>
+            <div class="form-group">
+                <label>Tenant Key</label>
+                <input @bind="TenantKey" placeholder="e.g. acme" required />
+            </div>
+            <button type="submit" class="auth-submit" style="background:linear-gradient(135deg,#4f46e5,#0ea5e9);" disabled="@IsBusy">
+                @(IsBusy ? "Signing in..." : "Admin Sign In \u2192")
+            </button>
+        </EditForm>
+
+        @if (!string.IsNullOrWhiteSpace(StatusMessage))
+        {
+            <div class="auth-status @(IsError ? "error" : "success")">
+                @StatusMessage
+            </div>
+        }
+
+        <p style="margin-top:1.4rem;font-size:0.82rem;color:var(--text-muted);text-align:center;">
+            Customer? <a href="/auth/customer-login" style="color:var(--c-teal-500);font-weight:600;">Customer Portal &rarr;</a>
+        </p>
+    </div>
+</div>
+
+@code {
+    private string Email { get; set; } = "admin@wrkplan.com";
+    private string Password { get; set; } = "Welcome@123";
+    private string TenantKey { get; set; } = "acme";
+    private bool IsBusy { get; set; }
+    private bool IsError { get; set; }
+    private string StatusMessage { get; set; } = string.Empty;
+
+    private async Task SignInAsync(EditContext _)
+    {
+        IsBusy = true;
+        StatusMessage = string.Empty;
+        IsError = false;
+
+        try
+        {
+            var result = await Api.LoginAsync(new AuthRequestDto(Email, Password, TenantKey));
+            if (result?.Success == true && result.Data is not null)
+            {
+                await Session.SetSessionAsync(result.Data, TenantKey);
+                StatusMessage = "\u2713 Login successful. Redirecting...";
+                Navigation.NavigateTo("/customerhub/dashboard");
+                return;
+            }
+
+            IsError = true;
+            StatusMessage = result?.Error?.Message ?? "Login failed. Check your credentials.";
+        }
+        catch (Exception ex)
+        {
+            IsError = true;
+            StatusMessage = $"Login error: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+}

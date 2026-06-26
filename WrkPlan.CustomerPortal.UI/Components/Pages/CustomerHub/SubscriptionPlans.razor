@@ -1,0 +1,392 @@
+@page "/customerhub/subscription-plans"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128230; Subscription Plans</h2>
+    <p>Create and manage the subscription plan catalog, assign plans to tenants.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="sp-loading"><div class="sp-spinner"></div></div>
+}
+else
+{
+    <!-- Tab bar -->
+    <div class="sp-tabs">
+        <button class="sp-tab @(_tab == "plans" ? "active" : "")" @onclick='() => _tab = "plans"'>&#128230; Plans</button>
+        <button class="sp-tab @(_tab == "assign" ? "active" : "")" @onclick='() => _tab = "assign"'>&#128101; Assign to Tenant</button>
+        <button class="sp-tab @(_tab == "log" ? "active" : "")" @onclick='() => SetTab("log")'>&#128196; Change Log</button>
+    </div>
+
+    @if (_tab == "plans")
+    {
+        <div class="sp-header-row">
+            <h3 style="margin:0;">Plan Catalog</h3>
+            <button class="btn-hero" style="font-size:0.85rem;padding:0.5rem 1.1rem;" @onclick="() => OpenCreate()">+ New Plan</button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_planError))
+        {
+            <div class="sp-error-banner">&#9888; @_planError</div>
+        }
+
+        @if (_plans.Count == 0)
+        {
+            <article class="dashboard-card" style="text-align:center;padding:2.5rem;">
+                <p style="font-size:2rem;">&#128230;</p>
+                <h3>No Plans Yet</h3>
+                <p style="color:var(--text-muted);">Create your first subscription plan above.</p>
+            </article>
+        }
+        else
+        {
+            <div class="cards-grid">
+                @foreach (var plan in _plans)
+                {
+                    <article class="dashboard-card sp-plan-card @(plan.IsActive ? "" : "sp-inactive")">
+                        <div class="sp-plan-header">
+                            <span class="sp-plan-badge @(plan.IsActive ? "badge-ok" : "badge-error")">@(plan.IsActive ? "Active" : "Inactive")</span>
+                            <span class="sp-plan-cycle tag">@plan.Cycle</span>
+                        </div>
+                        <h3 class="sp-plan-name">@plan.Name</h3>
+                        <p class="sp-plan-price">@plan.Price.ToString("C0") <span>/ @plan.Cycle</span></p>
+                        <p class="sp-plan-desc">@plan.Description</p>
+                        @if (plan.Features.Count > 0)
+                        {
+                            <ul class="sp-features">
+                                @foreach (var f in plan.Features.Take(4))
+                                {
+                                    <li>&#9989; @f</li>
+                                }
+                                @if (plan.Features.Count > 4)
+                                {
+                                    <li style="color:var(--text-muted);">+@(plan.Features.Count - 4) more</li>
+                                }
+                            </ul>
+                        }
+                        <div class="sp-plan-actions">
+                            <button class="ghost-btn" style="font-size:0.8rem;" @onclick="() => OpenEdit(plan)">&#9998; Edit</button>
+                            <button class="ghost-btn" style="font-size:0.8rem;color:@(plan.IsActive ? "var(--c-red)" : "var(--c-green)");" @onclick="() => TogglePlan(plan)">
+                                @(plan.IsActive ? "Deactivate" : "Activate")
+                            </button>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    }
+
+    @if (_tab == "assign")
+    {
+        <div class="panel sp-assign-panel">
+            <h3 style="margin-bottom:1.2rem;font:700 1rem 'Sora',sans-serif;">Assign Plan to Tenant</h3>
+            <div class="sp-assign-form">
+                <div>
+                    <label class="sp-label">Tenant</label>
+                    <select @bind="_assignTenantId">
+                        <option value="">— Select tenant —</option>
+                        @foreach (var t in _tenants)
+                        {
+                            <option value="@t.Id">@t.Name (@t.TenantKey)</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="sp-label">Subscription Plan</label>
+                    <select @bind="_assignPlanId">
+                        <option value="">— Select plan —</option>
+                        @foreach (var p in _plans.Where(x => x.IsActive))
+                        {
+                            <option value="@p.Id">@p.Name — @p.Price.ToString("C0")/@p.Cycle</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label class="sp-label">Effective Date</label>
+                    <input type="date" @bind="_assignEffectiveDate" />
+                </div>
+                <div>
+                    <label class="sp-label">Notes (optional)</label>
+                    <input type="text" @bind="_assignNotes" placeholder="Upgrade reason, account notes…" />
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_assignError))
+            {
+                <div class="sp-error-banner" style="margin-top:0.75rem;">&#9888; @_assignError</div>
+            }
+            @if (!string.IsNullOrEmpty(_assignSuccess))
+            {
+                <div class="sp-success-banner" style="margin-top:0.75rem;">&#9989; @_assignSuccess</div>
+            }
+            <button class="btn-hero" style="margin-top:1rem;" @onclick="AssignPlan" disabled="@_assigning">
+                @(_assigning ? "Assigning…" : "&#128230; Assign Plan")
+            </button>
+
+            <div style="margin-top:1.25rem;">
+                <h4 style="margin:0 0 0.6rem;font:700 0.95rem 'Sora',sans-serif;">Current Tenant Tagging</h4>
+                <div style="overflow-x:auto;">
+                    <table class="sp-log-table">
+                        <thead>
+                            <tr>
+                                <th>Tenant</th>
+                                <th>Tenant Key</th>
+                                <th>Current Plan</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in _tenants.OrderBy(x => x.Name))
+                            {
+                                <tr>
+                                    <td style="font-weight:700;">@t.Name</td>
+                                    <td><span class="tag">@t.TenantKey</span></td>
+                                    <td>@(string.IsNullOrWhiteSpace(t.Plan) ? "Unassigned" : t.Plan)</td>
+                                    <td>
+                                        <span class="badge @(t.IsActive ? "badge-ok" : "badge-error")">@(t.IsActive ? "Active" : "Inactive")</span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_tab == "log")
+    {
+        <div class="panel" style="padding:0;overflow:hidden;">
+            <div style="overflow-x:auto;">
+                <table class="sp-log-table">
+                    <thead>
+                        <tr>
+                            <th>Tenant</th>
+                            <th>From</th>
+                            <th>To</th>
+                            <th>Changed By</th>
+                            <th>Date</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_changeLogs.Count == 0)
+                        {
+                            <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--text-muted);">No changes recorded yet.</td></tr>
+                        }
+                        @foreach (var log in _changeLogs)
+                        {
+                            <tr>
+                                <td style="font-weight:700;">@log.TenantName</td>
+                                <td><span class="tag">@log.OldPlan</span></td>
+                                <td><span class="tag" style="background:rgba(13,148,136,0.15);color:var(--c-teal-500);">@log.NewPlan</span></td>
+                                <td style="color:var(--text-muted);font-size:0.82rem;">@log.ChangedBy</td>
+                                <td style="color:var(--text-muted);font-size:0.82rem;">@log.ChangedUtc.ToString("MMM dd, yyyy HH:mm")</td>
+                                <td style="color:var(--text-muted);font-size:0.82rem;">@(log.Notes ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+<!-- Create/Edit Modal -->
+@if (_showForm)
+{
+    <div class="sp-modal-overlay" @onclick="CloseForm">
+        <div class="sp-modal" @onclick:stopPropagation="true">
+            <h3>@(_editPlan is null ? "Create Plan" : "Edit Plan")</h3>
+
+            <label class="sp-label">Plan Name *</label>
+            <input @bind="_formName" placeholder="e.g. Growth, Enterprise" />
+
+            <label class="sp-label" style="margin-top:0.75rem;">Description</label>
+            <input @bind="_formDescription" placeholder="Short plan description" />
+
+            <label class="sp-label" style="margin-top:0.75rem;">Billing Cycle *</label>
+            <select @bind="_formCycle">
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Annual">Annual</option>
+            </select>
+
+            <label class="sp-label" style="margin-top:0.75rem;">Price ($) *</label>
+            <input type="number" @bind="_formPrice" min="0" step="0.01" />
+
+            <label class="sp-label" style="margin-top:0.75rem;">Features (one per line)</label>
+            <textarea @bind="_formFeatures" rows="4" placeholder="User management&#10;API access&#10;Priority support"></textarea>
+
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <div class="sp-error-banner" style="margin-top:0.5rem;">&#9888; @_formError</div>
+            }
+
+            <div style="display:flex;gap:0.75rem;margin-top:1.2rem;flex-wrap:wrap;">
+                <button class="btn-hero" @onclick="SaveForm" disabled="@_saving">@(_saving ? "Saving…" : "&#128190; Save")</button>
+                <button class="ghost-btn" @onclick="CloseForm">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _tab = "plans";
+    private bool _ready;
+    private List<SubscriptionPlanDto> _plans = [];
+    private List<TenantSummaryDto> _tenants = [];
+    private List<SubscriptionChangeLogDto> _changeLogs = [];
+    private string? _planError;
+
+    // Form state
+    private bool _showForm;
+    private SubscriptionPlanDto? _editPlan;
+    private string _formName = string.Empty;
+    private string _formDescription = string.Empty;
+    private string _formCycle = "Monthly";
+    private decimal _formPrice;
+    private string _formFeatures = string.Empty;
+    private string? _formError;
+    private bool _saving;
+
+    // Assign state
+    private string _assignTenantId = string.Empty;
+    private string _assignPlanId = string.Empty;
+    private DateTime _assignEffectiveDate = DateTime.Today;
+    private string _assignNotes = string.Empty;
+    private string? _assignError;
+    private string? _assignSuccess;
+    private bool _assigning;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", forceLoad: true);
+            return;
+        }
+        await LoadAllAsync();
+    }
+
+    private async Task LoadAllAsync()
+    {
+        var plansTask = Api.GetSubscriptionPlansAsync();
+        var tenantsTask = Api.GetTenantsAsync();
+        await Task.WhenAll(plansTask, tenantsTask);
+        _plans = (await plansTask)?.Data ?? [];
+        _tenants = (await tenantsTask)?.Data ?? [];
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task SetTab(string tab)
+    {
+        _tab = tab;
+        if (tab == "log" && _changeLogs.Count == 0)
+        {
+            var result = await Api.GetSubscriptionChangeLogAsync();
+            _changeLogs = result?.Data ?? [];
+        }
+        StateHasChanged();
+    }
+
+    private void OpenCreate()
+    {
+        _editPlan = null;
+        _formName = _formDescription = _formFeatures = string.Empty;
+        _formCycle = "Monthly";
+        _formPrice = 0;
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEdit(SubscriptionPlanDto plan)
+    {
+        _editPlan = plan;
+        _formName = plan.Name;
+        _formDescription = plan.Description;
+        _formCycle = plan.Cycle;
+        _formPrice = plan.Price;
+        _formFeatures = string.Join("\n", plan.Features);
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm() { _showForm = false; _formError = null; }
+
+    private async Task SaveForm()
+    {
+        if (string.IsNullOrWhiteSpace(_formName)) { _formError = "Plan name is required."; return; }
+        _saving = true; _formError = null;
+        var features = _formFeatures.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToList();
+        try
+        {
+            if (_editPlan is null)
+            {
+                var dto = new CreateSubscriptionPlanDto(_formName, _formDescription, _formCycle, _formPrice, features);
+                var result = await Api.CreateSubscriptionPlanAsync(dto);
+                if (result?.Success == true && result.Data is not null)
+                    _plans.Add(result.Data);
+                else
+                    _formError = result?.Error?.Message ?? "Failed to create plan.";
+            }
+            else
+            {
+                var dto = new UpdateSubscriptionPlanDto(_formName, _formDescription, _formCycle, _formPrice, _editPlan.IsActive, features);
+                var result = await Api.UpdateSubscriptionPlanAsync(_editPlan.Id, dto);
+                if (result?.Success == true)
+                {
+                    var idx = _plans.FindIndex(p => p.Id == _editPlan.Id);
+                    if (idx >= 0)
+                        _plans[idx] = _editPlan with { Name = _formName, Description = _formDescription, Cycle = _formCycle, Price = _formPrice, Features = features };
+                }
+                else
+                    _formError = result?.Error?.Message ?? "Failed to update plan.";
+            }
+            if (_formError is null) _showForm = false;
+        }
+        catch (Exception ex) { _formError = ex.Message; }
+        finally { _saving = false; StateHasChanged(); }
+    }
+
+    private async Task TogglePlan(SubscriptionPlanDto plan)
+    {
+        var result = await Api.ToggleSubscriptionPlanAsync(plan.Id);
+        if (result?.Success == true)
+        {
+            var idx = _plans.FindIndex(p => p.Id == plan.Id);
+            if (idx >= 0) _plans[idx] = plan with { IsActive = !plan.IsActive };
+            StateHasChanged();
+        }
+        else _planError = result?.Error?.Message ?? "Failed to toggle plan.";
+    }
+
+    private async Task AssignPlan()
+    {
+        _assignError = _assignSuccess = null;
+        if (string.IsNullOrEmpty(_assignTenantId)) { _assignError = "Select a tenant."; return; }
+        if (string.IsNullOrEmpty(_assignPlanId))   { _assignError = "Select a plan."; return; }
+        _assigning = true;
+        try
+        {
+            var dto = new AssignSubscriptionPlanDto(
+                Guid.Parse(_assignTenantId), Guid.Parse(_assignPlanId),
+                _assignEffectiveDate, string.IsNullOrWhiteSpace(_assignNotes) ? null : _assignNotes);
+            var result = await Api.AssignSubscriptionPlanAsync(dto);
+            if (result?.Success == true) _assignSuccess = result.Data ?? "Plan assigned successfully.";
+            else _assignError = result?.Error?.Message ?? "Assignment failed.";
+        }
+        catch (Exception ex) { _assignError = ex.Message; }
+        finally { _assigning = false; StateHasChanged(); }
+    }
+}

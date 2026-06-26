@@ -1,0 +1,131 @@
+@page "/customerhub/settings"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>Platform Settings</h2>
+    <p>Manage secure Razorpay keys and payment gateway runtime configuration.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="ticket-loading"><div class="ticket-spinner"></div></div>
+}
+else
+{
+    <div class="cards-grid">
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.8rem;">Razorpay Settings</h3>
+            @if (_view is not null)
+            {
+                <div class="panel" style="padding:0.7rem;margin-bottom:0.7rem;">
+                    <div style="font-size:0.84rem;color:var(--text-muted);">Current Key Id: <strong>@_view.KeyIdMasked</strong></div>
+                    <div style="font-size:0.84rem;color:var(--text-muted);">Test Mode: <strong>@(_view.IsTestMode ? "Enabled" : "Disabled")</strong></div>
+                    <div style="font-size:0.84rem;color:var(--text-muted);">Last Validated: <strong>@(_view.LastValidatedUtc?.ToString("dd MMM yyyy HH:mm") ?? "Not validated")</strong></div>
+                </div>
+            }
+
+            <input @bind="_keyId" placeholder="Razorpay KeyId" />
+            <input @bind="_keySecret" placeholder="Razorpay KeySecret" style="margin-top:0.5rem;" />
+            <input @bind="_webhookSecret" placeholder="Razorpay WebhookSecret" style="margin-top:0.5rem;" />
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.6rem;">
+                <label><input type="checkbox" @bind="_isTestMode" /> Test mode</label>
+                <label><input type="checkbox" @bind="_validateConnection" /> Validate connection now</label>
+            </div>
+            <button style="margin-top:0.6rem;" @onclick="SaveAsync" disabled="@_busy">@(_busy ? "Saving..." : "Save Razorpay Settings")</button>
+
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <div class="auth-status error" style="margin-top:0.7rem;">@_error</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(_success))
+            {
+                <div class="auth-status success" style="margin-top:0.7rem;">@_success</div>
+            }
+        </article>
+    </div>
+}
+
+@code {
+    private bool _ready;
+    private bool _busy;
+    private string? _error;
+    private string? _success;
+
+    private RazorpaySettingsViewDto? _view;
+    private string _keyId = string.Empty;
+    private string _keySecret = string.Empty;
+    private string _webhookSecret = string.Empty;
+    private bool _isTestMode = true;
+    private bool _validateConnection = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", true);
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var response = await Api.GetRazorpaySettingsAsync();
+        _view = response?.Data;
+        if (_view is not null)
+        {
+            _isTestMode = _view.IsTestMode;
+        }
+
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = _success = null;
+        if (string.IsNullOrWhiteSpace(_keyId) || string.IsNullOrWhiteSpace(_keySecret) || string.IsNullOrWhiteSpace(_webhookSecret))
+        {
+            _error = "KeyId, KeySecret and WebhookSecret are required.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var response = await Api.SaveRazorpaySettingsAsync(new RazorpaySettingsUpsertDto(
+                _keyId,
+                _keySecret,
+                _webhookSecret,
+                _isTestMode,
+                _validateConnection));
+
+            if (response?.Success == true && response.Data is not null)
+            {
+                _view = response.Data;
+                _success = "Razorpay settings saved successfully.";
+                _keySecret = string.Empty;
+                _webhookSecret = string.Empty;
+            }
+            else
+            {
+                _error = response?.Error?.Message ?? "Failed to save settings.";
+            }
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}

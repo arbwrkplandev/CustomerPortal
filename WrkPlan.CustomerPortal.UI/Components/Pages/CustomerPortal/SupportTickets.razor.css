@@ -1,0 +1,19 @@
+.ticket-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.ticket-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(14,165,233,0.18);
+    border-top-color: #0ea5e9;
+    border-radius: 50%;
+    animation: ticket-spin 0.75s linear infinite;
+}
+
+@keyframes ticket-spin {
+    to { transform: rotate(360deg); }
+}

@@ -1,0 +1,197 @@
+.inv-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.inv-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(14,165,233,0.18);
+    border-top-color: #0ea5e9;
+    border-radius: 50%;
+    animation: inv-spin 0.75s linear infinite;
+}
+
+@keyframes inv-spin { to { transform: rotate(360deg); } }
+
+.inv-error {
+    text-align: center;
+    padding: 2.5rem;
+}
+
+/* Invoice list table */
+.inv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.inv-table thead tr {
+    border-bottom: 1px solid var(--border);
+    background: rgba(148,163,184,0.06);
+}
+
+.inv-table th {
+    padding: 0.75rem 1.2rem;
+    text-align: left;
+    font: 700 0.72rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.07rem;
+    color: var(--text-muted);
+}
+
+.inv-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s ease;
+}
+
+.inv-table tbody tr:hover { background: rgba(14,165,233,0.05); }
+
+.inv-row-overdue { background: rgba(239,68,68,0.04) !important; }
+
+.inv-table td {
+    padding: 0.9rem 1.2rem;
+    color: var(--text-primary);
+}
+
+.inv-num {
+    font: 700 0.88rem "Sora", sans-serif;
+    color: var(--c-sky-500);
+}
+
+/* Invoice detail */
+.inv-detail-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.2rem;
+    flex-wrap: wrap;
+}
+
+.inv-detail-header h3 {
+    font: 700 1.2rem "Sora", sans-serif;
+    margin: 0;
+    flex: 1;
+}
+
+.inv-detail-grid {
+    grid-template-columns: 2fr 1fr;
+}
+
+@media (max-width: 768px) {
+    .inv-detail-grid { grid-template-columns: 1fr; }
+}
+
+.inv-card-lines { grid-column: span 2; }
+
+@media (max-width: 768px) {
+    .inv-card-lines { grid-column: span 1; }
+}
+
+.inv-meta-row {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.inv-meta-item {}
+
+.inv-meta-label {
+    font: 600 0.72rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.08rem;
+    color: var(--text-muted);
+    margin: 0 0 0.2rem;
+}
+
+.inv-meta-value {
+    font: 700 0.95rem "Sora", sans-serif;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* Line items */
+.inv-line-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.inv-line-head {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.65rem 1rem;
+    background: rgba(148,163,184,0.08);
+    font: 700 0.72rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.08rem;
+    color: var(--text-muted);
+}
+
+.inv-line-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    animation: slide-row 0.3s ease both;
+}
+
+@keyframes slide-row {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.inv-discount { color: var(--c-green); }
+
+.inv-line-total {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.85rem 1rem;
+    border-top: 2px solid var(--border);
+    font: 800 1rem "Sora", sans-serif;
+    color: var(--text-primary);
+    background: rgba(14,165,233,0.05);
+}
+
+.inv-ref {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+
+/* Status card */
+.inv-status-card {
+    text-align: center;
+    padding: 2rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.inv-status-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.inv-status-card h4 {
+    font: 700 1rem "Sora", sans-serif;
+    margin: 0;
+}
+
+.inv-status-amount {
+    font: 800 1.8rem "Sora", sans-serif;
+    color: var(--text-primary);
+    margin: 0;
+}

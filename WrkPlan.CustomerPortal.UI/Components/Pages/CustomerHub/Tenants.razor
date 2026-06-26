@@ -1,0 +1,245 @@
+@page "/customerhub/tenants"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128101; Tenant Management</h2>
+    <p>All registered tenants &mdash; view, activate, and deactivate accounts.</p>
+</div>
+
+@if (IsLoading)
+{
+    <div class="panel" style="text-align:center;padding:2rem;">
+        <p style="color:var(--text-muted);animation:pulse 1.8s infinite;">Loading tenants...</p>
+    </div>
+}
+else if (!string.IsNullOrWhiteSpace(Error))
+{
+    <div class="panel" style="border-color:rgba(239,68,68,0.35);">
+        <p class="status-overdue">@Error</p>
+    </div>
+}
+else
+{
+    <div class="panel" style="padding:1rem 1.2rem;margin-bottom:1rem;">
+        <h3 class="section-title" style="margin-bottom:0.35rem;">Create Tenant Account</h3>
+        <p style="color:var(--text-secondary);margin:0 0 0.9rem;font-size:0.86rem;">Provision a tenant and its admin login credentials from the hub.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.7rem;">
+            <input @bind="CreateForm.TenantName" placeholder="Tenant name" />
+            <input @bind="CreateForm.TenantKey" placeholder="Tenant key (e.g. acme2)" />
+            <input @bind="CreateForm.CompanyName" placeholder="Company name" />
+            <input @bind="CreateForm.AdminEmail" placeholder="Admin email" />
+            <input @bind="CreateForm.AdminPassword" type="password" placeholder="Admin password" />
+            <label style="display:flex;align-items:center;gap:0.45rem;padding:0.6rem 0.4rem;color:var(--text-secondary);font-weight:600;">
+                <input @bind="CreateForm.ActivateNow" type="checkbox" style="width:16px;height:16px;" /> Activate immediately
+            </label>
+        </div>
+        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.85rem;">
+            <button @onclick="CreateTenantAsync" disabled="@IsCreating" style="padding:0.55rem 1rem;">
+                @(IsCreating ? "Creating..." : "Add Tenant")
+            </button>
+            @if (!string.IsNullOrWhiteSpace(CreateError))
+            {
+                <span class="status-overdue" style="font-size:0.82rem;">@CreateError</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(CreateSuccess))
+            {
+                <span class="status-ok" style="font-size:0.82rem;">@CreateSuccess</span>
+            }
+        </div>
+    </div>
+
+    <!-- Summary strip -->
+    <div class="cards-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:1.2rem;">
+        <article class="dashboard-card kpi-card">
+            <div class="kpi-icon">&#128101;</div>
+            <p class="kpi-label">Total Tenants</p>
+            <p class="kpi-value">@TenantItems.Count</p>
+        </article>
+        <article class="dashboard-card kpi-card">
+            <div class="kpi-icon" style="background:linear-gradient(135deg,#10b981,#059669);">&#9989;</div>
+            <p class="kpi-label">Active</p>
+            <p class="kpi-value">@TenantItems.Count(t => t.IsActive)</p>
+        </article>
+        <article class="dashboard-card kpi-card">
+            <div class="kpi-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);">&#128683;</div>
+            <p class="kpi-label">Inactive</p>
+            <p class="kpi-value">@TenantItems.Count(t => !t.IsActive)</p>
+        </article>
+        <article class="dashboard-card kpi-card">
+            <div class="kpi-icon" style="background:linear-gradient(135deg,#4f46e5,#0ea5e9);">&#128176;</div>
+            <p class="kpi-label">ARR</p>
+            <p class="kpi-value">@TenantItems.Where(t => t.IsActive && t.SubscriptionPrice.HasValue).Sum(t => t.SubscriptionPrice!.Value).ToString("C0")</p>
+        </article>
+    </div>
+
+    <!-- Search -->
+    <div class="panel" style="padding:0.9rem 1.2rem;margin-bottom:1rem;">
+        <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+            <input @bind="Search" @bind:event="oninput" placeholder="&#128269; Search by name or key..." style="max-width:340px;flex:1;" />
+            <span class="tag">@FilteredTenantItems.Count() result@(FilteredTenantItems.Count() == 1 ? "" : "s")</span>
+        </div>
+    </div>
+
+    <!-- Table-style list -->
+    <div class="panel" style="padding:0;">
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border);background:rgba(148,163,184,0.06);">
+                        <th style="padding:0.75rem 1.2rem;text-align:left;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Tenant</th>
+                        <th style="padding:0.75rem 1rem;text-align:left;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Key</th>
+                        <th style="padding:0.75rem 1rem;text-align:left;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Plan</th>
+                        <th style="padding:0.75rem 1rem;text-align:right;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">MRR</th>
+                        <th style="padding:0.75rem 1rem;text-align:left;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Activated</th>
+                        <th style="padding:0.75rem 1rem;text-align:center;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Status</th>
+                        <th style="padding:0.75rem 1rem;text-align:center;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var t in FilteredTenantItems)
+                    {
+                        <tr @onmouseenter="() => HoveredId = t.Id" @onmouseleave="() => HoveredId = null"
+                            style="border-bottom:1px solid var(--border);background:@(HoveredId == t.Id ? "rgba(14,165,233,0.05)" : "transparent");transition:background 0.15s ease;">
+                            <td style="padding:0.85rem 1.2rem;">
+                                <p style="margin:0;font-weight:700;color:var(--text-primary);">@t.Name</p>
+                                <p style="margin:0;font-size:0.78rem;color:var(--text-muted);">@(t.CompanyName ?? "—")</p>
+                            </td>
+                            <td style="padding:0.85rem 1rem;"><span class="tag">@t.TenantKey</span></td>
+                            <td style="padding:0.85rem 1rem;color:var(--text-secondary);font-weight:600;">@(t.Plan ?? "—")</td>
+                            <td style="padding:0.85rem 1rem;text-align:right;font-weight:700;color:var(--text-primary);">@(t.SubscriptionPrice.HasValue ? t.SubscriptionPrice.Value.ToString("C0") : "—")</td>
+                            <td style="padding:0.85rem 1rem;color:var(--text-muted);font-size:0.82rem;">@(t.ActivatedUtc.HasValue ? t.ActivatedUtc.Value.ToString("MMM dd, yyyy") : "—")</td>
+                            <td style="padding:0.85rem 1rem;text-align:center;">
+                                @if (t.IsActive)
+                                {
+                                    <span class="badge badge-ok">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-error">Inactive</span>
+                                }
+                            </td>
+                            <td style="padding:0.85rem 1rem;text-align:center;">
+                                <button @onclick="() => ToggleAsync(t)" style="padding:0.35rem 0.85rem;font-size:0.78rem;background:@(t.IsActive ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)");color:@(t.IsActive ? "var(--c-red)" : "var(--c-green)");border:1px solid @(t.IsActive ? "rgba(239,68,68,0.28)" : "rgba(16,185,129,0.28)");box-shadow:none;">
+                                    @(t.IsActive ? "Deactivate" : "Activate")
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TenantSummaryDto> TenantItems { get; set; } = [];
+    private bool IsLoading { get; set; } = true;
+    private string Error { get; set; } = string.Empty;
+    private string Search { get; set; } = string.Empty;
+    private Guid? HoveredId { get; set; }
+    private bool IsCreating { get; set; }
+    private string CreateError { get; set; } = string.Empty;
+    private string CreateSuccess { get; set; } = string.Empty;
+    private CreateTenantVm CreateForm { get; set; } = new();
+
+    private IEnumerable<TenantSummaryDto> FilteredTenantItems =>
+        string.IsNullOrWhiteSpace(Search)
+            ? TenantItems
+            : TenantItems.Where(t =>
+                t.Name.Contains(Search, StringComparison.OrdinalIgnoreCase) ||
+                t.TenantKey.Contains(Search, StringComparison.OrdinalIgnoreCase) ||
+                (t.CompanyName?.Contains(Search, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", forceLoad: true);
+            return;
+        }
+
+        var result = await Api.GetTenantsAsync();
+        if (result?.Success == true && result.Data is not null)
+        {
+            TenantItems = result.Data;
+        }
+        else
+        {
+            Error = result?.Error?.Message ?? "Failed to load tenants.";
+        }
+
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task ToggleAsync(TenantSummaryDto tenant)
+    {
+        var result = await Api.ToggleTenantAsync(tenant.Id);
+        if (result?.Success == true)
+        {
+            var idx = TenantItems.FindIndex(t => t.Id == tenant.Id);
+            if (idx >= 0)
+            {
+                TenantItems[idx] = tenant with { IsActive = !tenant.IsActive };
+            }
+        }
+    }
+
+    private async Task CreateTenantAsync()
+    {
+        CreateError = string.Empty;
+        CreateSuccess = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(CreateForm.TenantName) ||
+            string.IsNullOrWhiteSpace(CreateForm.TenantKey) ||
+            string.IsNullOrWhiteSpace(CreateForm.CompanyName) ||
+            string.IsNullOrWhiteSpace(CreateForm.AdminEmail) ||
+            string.IsNullOrWhiteSpace(CreateForm.AdminPassword))
+        {
+            CreateError = "All tenant account fields are required.";
+            return;
+        }
+
+        IsCreating = true;
+        var request = new CreateTenantAccountRequestDto(
+            CreateForm.TenantName.Trim(),
+            CreateForm.TenantKey.Trim(),
+            CreateForm.CompanyName.Trim(),
+            CreateForm.AdminEmail.Trim(),
+            CreateForm.AdminPassword,
+            CreateForm.ActivateNow);
+
+        var result = await Api.CreateTenantAsync(request);
+        if (result?.Success == true && result.Data is not null)
+        {
+            TenantItems.Insert(0, result.Data);
+            CreateSuccess = $"Tenant '{result.Data.Name}' created with key '{result.Data.TenantKey}'.";
+            CreateForm = new CreateTenantVm { ActivateNow = true };
+        }
+        else
+        {
+            CreateError = result?.Error?.Message ?? "Failed to create tenant.";
+        }
+
+        IsCreating = false;
+    }
+
+    private sealed class CreateTenantVm
+    {
+        public string TenantName { get; set; } = string.Empty;
+        public string TenantKey { get; set; } = string.Empty;
+        public string CompanyName { get; set; } = string.Empty;
+        public string AdminEmail { get; set; } = string.Empty;
+        public string AdminPassword { get; set; } = string.Empty;
+        public bool ActivateNow { get; set; } = true;
+    }
+}

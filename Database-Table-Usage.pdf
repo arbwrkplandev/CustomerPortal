@@ -1,0 +1,185 @@
+%PDF-1.4
+3 0 obj
+<< /Length 4691 >>
+stream
+BT
+/F1 9 Tf
+50 790 Td
+(# WrkPlan Customer Portal Database/Table Usage) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(## Database Name) Tj
+0 -14 Td
+(- Primary database: `nextgen_admin`) Tj
+0 -14 Td
+(- Source: API connection string default in `WrkPlan.CustomerPortal.API/Program.cs`) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(## Table Inventory and Usage) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(| Table / DbSet | Purpose | Used In Project |) Tj
+0 -14 Td
+(|---|---|---|) Tj
+0 -14 Td
+(| TenantRegistries \\(`TenantRegistry`\\) | Master tenant registry \\(name, key, active status\\) | Auth, Admin tenant list/create/toggle, provisioning service |) Tj
+0 -14 Td
+(| TenantConnectionMaps \\(`TenantConnectionMap`\\) | Stores tenant DB mapping | Tenant provisioning service |) Tj
+0 -14 Td
+(| Users \\(`AppUser`\\) | Tenant user credentials | Auth login password validation, tenant creation/provisioning |) Tj
+0 -14 Td
+(| Roles \\(`AppRole`\\) | Role master | Schema only \\(not actively queried in current controllers\\) |) Tj
+0 -14 Td
+(| UserRoles \\(`UserRole`\\) | User-role mapping | Schema only |) Tj
+0 -14 Td
+(| Permissions \\(`Permission`\\) | Permission catalog | Schema only |) Tj
+0 -14 Td
+(| CustomerProfiles \\(`CustomerProfile`\\) | Customer company profile per tenant | Dashboards, invoices, tickets, subscriptions, onboarding mapping |) Tj
+0 -14 Td
+(| Contacts \\(`Contact`\\) | Contact records | Schema only |) Tj
+0 -14 Td
+(| NotificationSettings \\(`NotificationSetting`\\) | Alert preference toggles | Schema only |) Tj
+0 -14 Td
+(| Subscriptions \\(`Subscription`\\) | Plan and billing cycle data | Hub KPIs, invoice detail fallback, subscription APIs, plan assignment |) Tj
+0 -14 Td
+(| Modules \\(`Module`\\) | Subscription module licensing | Schema only |) Tj
+0 -14 Td
+(| ServiceChangeHistories \\(`ServiceChangeHistory`\\) | Subscription/service history | Schema only |) Tj
+0 -14 Td
+(| TSIncreaseRequests \\(`TSIncreaseRequest`\\) | Team-size increase requests | Schema only |) Tj
+0 -14 Td
+(| SalesQuotes \\(`SalesQuote`\\) | Quote records | Placeholder endpoint |) Tj
+0 -14 Td
+(| SalesOrders \\(`SalesOrder`\\) | Sales order records | Schema only |) Tj
+0 -14 Td
+(| Amendments \\(`Amendment`\\) | Commercial amendments | Schema only |) Tj
+0 -14 Td
+(| AgreementAcknowledgements \\(`AgreementAcknowledgement`\\) | Agreement acceptance history | Schema only |) Tj
+0 -14 Td
+(| Contracts \\(`Contract`\\) | Contract headers | Placeholder endpoint |) Tj
+0 -14 Td
+(| ContractDocuments \\(`ContractDocument`\\) | Contract files | Schema only |) Tj
+0 -14 Td
+(| BillingContacts \\(`BillingContact`\\) | Billing contacts | Schema only |) Tj
+0 -14 Td
+(| PaymentMethodsMeta \\(`PaymentMethodMeta`\\) | Payment method metadata | Reminder service scans this table |) Tj
+0 -14 Td
+(| Invoices \\(`Invoice`\\) | Customer invoices | Invoice list/detail/pdf, dashboard widgets, seed/demo data |) Tj
+0 -14 Td
+(| InvoiceItems \\(`InvoiceItem`\\) | Invoice line items | Invoice detail API |) Tj
+0 -14 Td
+(| Payments \\(`Payment`\\) | Payment transactions | Invoice detail API |) Tj
+0 -14 Td
+(| PaymentEvents \\(`PaymentEvent`\\) | Stripe webhook idempotency/event log | Stripe webhook handling |) Tj
+0 -14 Td
+(| OnboardingWorkflows \\(`OnboardingWorkflow`\\) | Workflow header | Schema only |) Tj
+0 -14 Td
+(| OnboardingSteps \\(`OnboardingStep`\\) | Workflow step rows | Progress logic uses DTO payload \\(table currently not queried\\) |) Tj
+0 -14 Td
+(| ImplementationPlans \\(`ImplementationPlan`\\) | JSON implementation plans | Schema only |) Tj
+0 -14 Td
+(| QuestionnaireResponses \\(`QuestionnaireResponse`\\) | Questionnaire responses and template storage | Customer onboarding save; admin template CRUD |) Tj
+0 -14 Td
+(| SupportTickets \\(`SupportTicket`\\) | Customer support tickets | Ticket APIs, dashboard cards, seed/demo data |) Tj
+0 -14 Td
+(| TicketComments \\(`TicketComment`\\) | Ticket comment thread | Ticket create API |) Tj
+0 -14 Td
+(| Escalations \\(`Escalation`\\) | Escalation records | Schema only |) Tj
+0 -14 Td
+(| Announcements \\(`Announcement`\\) | Tenant announcements | Announcement APIs, dashboard cards, seed/demo data |) Tj
+0 -14 Td
+(| ResourceFiles \\(`ResourceFile`\\) | Knowledge/resource files | Placeholder endpoint scope |) Tj
+0 -14 Td
+(| Downloads \\(`Download`\\) | File download logs | Schema only |) Tj
+0 -14 Td
+(| FeatureRequests \\(`FeatureRequest`\\) | Feature request records | Schema only |) Tj
+0 -14 Td
+(| TrainingRequests \\(`TrainingRequest`\\) | Training session requests | Schema only |) Tj
+0 -14 Td
+(| ArchiveRequests \\(`ArchiveRequest`\\) | Archive requests | Schema only |) Tj
+0 -14 Td
+ET
+
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 3 0 R >>
+endobj
+5 0 obj
+<< /Length 1828 >>
+stream
+BT
+/F1 9 Tf
+50 790 Td
+(| ActivityLogs \\(`ActivityLog`\\) | Operational activity logs | Schema only |) Tj
+0 -14 Td
+(| LoginAuditLogs \\(`LoginAuditLog`\\) | Login audit records | Audit placeholder endpoint scope |) Tj
+0 -14 Td
+(| NotificationQueue \\(`NotificationQueue`\\) | Outbound notification queue | Schema only |) Tj
+0 -14 Td
+(| IntegrationEvents \\(`IntegrationEvent`\\) | Integration event payloads | Integration placeholder scope |) Tj
+0 -14 Td
+(| CustomerThemePreferences \\(`CustomerThemePreference`\\) | Per-customer theme settings | Theme APIs/services |) Tj
+0 -14 Td
+(| TB_ERP_CLIENT_DETAIL \\(`TbErpClientDetail`\\) | External ERP client registry | Admin ERP listing endpoint |) Tj
+0 -14 Td
+(| SubscriptionPlans \\(`SubscriptionPlan`\\) | Plan catalog | Admin plan CRUD, assignment, customer subscription view |) Tj
+0 -14 Td
+(| SubscriptionChangeLogs \\(`SubscriptionChangeLog`\\) | Plan assignment audit trail | Admin change log endpoint |) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(## Key Files Where Table Access Occurs) Tj
+0 -14 Td
+(- `WrkPlan.CustomerPortal.API/Controllers/ApiControllers.cs`) Tj
+0 -14 Td
+(- `WrkPlan.CustomerPortal.Infrastructure/Services/CoreInfraServices.cs`) Tj
+0 -14 Td
+(- `WrkPlan.CustomerPortal.Infrastructure/Data/SeedData.cs`) Tj
+0 -14 Td
+(- `WrkPlan.CustomerPortal.Infrastructure/Data/AdminDbContext.cs`) Tj
+0 -14 Td
+() Tj
+0 -14 Td
+(## Notes) Tj
+0 -14 Td
+(- This project uses EF Core with `AdminDbContext` as the central schema map.) Tj
+0 -14 Td
+(- Several tables are currently defined for full platform scope but not yet actively queried by live UI/API workflows.) Tj
+0 -14 Td
+(- `TB_ERP_CLIENT_DETAIL` query includes a fallback to fully qualified `[nextgen_admin].[dbo].[TB_ERP_CLIENT_DETAIL]` to handle server-default DB mismatches.) Tj
+0 -14 Td
+ET
+
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>
+endobj
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 2 /Kids [ 4 0 R 6 0 R ] >>
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000010 00000 n 
+0000004756 00000 n 
+0000004885 00000 n 
+0000006768 00000 n 
+0000006897 00000 n 
+0000006949 00000 n 
+0000007017 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+7088
+%%EOF

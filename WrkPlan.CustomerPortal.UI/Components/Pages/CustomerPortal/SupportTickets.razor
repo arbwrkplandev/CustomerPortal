@@ -1,0 +1,324 @@
+@page "/customerportal/support-tickets"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128220; Support Tickets</h2>
+    <p>Raise and track your support requests.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="ticket-loading"><div class="ticket-spinner"></div></div>
+}
+else
+{
+    <div class="cards-grid">
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Raise New Ticket</h3>
+
+            <div class="field-row" style="grid-template-columns:2fr 1fr;">
+                <div>
+                    <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Subject</label>
+                    <input @bind="_subject" placeholder="Short issue summary" />
+                </div>
+                <div>
+                    <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Priority</label>
+                    <select @bind="_priority">
+                        <option value="Low">Low</option>
+                        <option value="Normal">Normal</option>
+                        <option value="High">High</option>
+                        <option value="Critical">Critical</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-top:0.75rem;">
+                <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Description</label>
+                <textarea @bind="_description" rows="4" placeholder="Describe the problem in detail"></textarea>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_createError))
+            {
+                <div class="auth-status error" style="margin-top:0.75rem;">@_createError</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(_createSuccess))
+            {
+                <div class="auth-status success" style="margin-top:0.75rem;">@_createSuccess</div>
+            }
+
+            <button style="margin-top:0.9rem;" @onclick="CreateAsync" disabled="@_creating">@(_creating ? "Submitting..." : "Submit Ticket")</button>
+        </article>
+
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Recent Tickets</h3>
+            <div class="panel" style="padding:0.65rem 0.8rem;margin-bottom:0.8rem;display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
+                <input value="@_search" @onchange="SearchAsync" placeholder="Search tickets" style="max-width:260px;" />
+                <select value="@_pageSize" @onchange="ApplyPageSizeAsync" style="max-width:120px;">
+                    <option value="10">10 / page</option>
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                </select>
+                <span class="tag">Showing @RangeStart-@RangeEnd of @_totalCount</span>
+            </div>
+
+            @if (_loadingList)
+            {
+                <p style="color:var(--text-muted);">Loading tickets...</p>
+            }
+            else if (_tickets.Count == 0)
+            {
+                <p style="color:var(--text-muted);">No tickets created yet.</p>
+            }
+            else
+            {
+                <ul class="data-list">
+                    @foreach (var t in _tickets)
+                    {
+                        var badge = t.Priority is "High" or "Critical" ? "badge-error" : t.Priority == "Normal" ? "badge-warn" : "badge-ok";
+                        <li style="cursor:pointer;" @onclick="() => SelectTicketAsync(t.Id)">
+                            <span class="list-label">@(string.IsNullOrWhiteSpace(t.TicketNumber) ? t.Subject : $"{t.TicketNumber} - {t.Subject}")</span>
+                            <span style="display:flex;gap:0.4rem;align-items:center;">
+                                <span class="badge @badge">@t.Priority</span>
+                                <span class="tag">@t.Status</span>
+                                @if (t.ResolvedInDays.HasValue)
+                                {
+                                    <span class="tag">Resolved in @t.ResolvedInDays day(s)</span>
+                                }
+                            </span>
+                        </li>
+                    }
+                </ul>
+
+                <div style="margin-top:0.9rem;display:flex;justify-content:space-between;align-items:center;gap:0.65rem;flex-wrap:wrap;">
+                    <span style="font-size:0.82rem;color:var(--text-muted);">Page @_pageNumber of @_totalPages</span>
+                    <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+                        <button class="ghost-btn" style="padding:0.35rem 0.7rem;font-size:0.8rem;" @onclick="() => GoToPageAsync(_pageNumber - 1)" disabled="@(_pageNumber <= 1)">Previous</button>
+                        @for (var p = Math.Max(1, _pageNumber - 2); p <= Math.Min(_totalPages, _pageNumber + 2); p++)
+                        {
+                            var local = p;
+                            <button class="ghost-btn" style="padding:0.35rem 0.62rem;font-size:0.8rem;@(local == _pageNumber ? "border-color:rgba(14,165,233,0.5);color:var(--c-sky-500);font-weight:700;" : "")" @onclick="() => GoToPageAsync(local)">@local</button>
+                        }
+                        <button class="ghost-btn" style="padding:0.35rem 0.7rem;font-size:0.8rem;" @onclick="() => GoToPageAsync(_pageNumber + 1)" disabled="@(_pageNumber >= _totalPages)">Next</button>
+                    </div>
+                </div>
+            }
+        </article>
+
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Ticket Conversation</h3>
+            @if (_loadingDetail)
+            {
+                <p style="color:var(--text-muted);">Loading ticket thread...</p>
+            }
+            else if (_selectedTicket is null)
+            {
+                <p style="color:var(--text-muted);">Select a ticket to view full status history and admin replies.</p>
+            }
+            else
+            {
+                <div class="field-row" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin-bottom:0.75rem;">
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Ticket</div>
+                        <div style="font-weight:700;">@_selectedTicket.TicketNumber</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Status</div>
+                        <div style="font-weight:700;">@_selectedTicket.Status</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Created</div>
+                        <div style="font-weight:700;">@_selectedTicket.CreatedUtc.ToString("dd MMM yyyy HH:mm")</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Resolution</div>
+                        <div style="font-weight:700;">@(_selectedTicket.ResolvedInDays.HasValue ? $"{_selectedTicket.ResolvedInDays} day(s)" : "In progress")</div>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_selectedTicket.ResolutionMessage))
+                {
+                    <div class="panel" style="padding:0.7rem 0.85rem;margin-bottom:0.75rem;">
+                        <div style="font-size:0.76rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;margin-bottom:0.3rem;">Resolution Note</div>
+                        <div>@_selectedTicket.ResolutionMessage</div>
+                    </div>
+                }
+
+                <h4 style="margin:0 0 0.45rem;">Messages</h4>
+                @if (_selectedTicket.Messages.Count == 0)
+                {
+                    <p style="color:var(--text-muted);">No message thread yet.</p>
+                }
+                else
+                {
+                    <ul class="data-list" style="margin-bottom:0.8rem;">
+                        @foreach (var message in _selectedTicket.Messages)
+                        {
+                            <li>
+                                <span class="list-label">@message.Message</span>
+                                <span style="display:flex;gap:0.4rem;align-items:center;">
+                                    <span class="tag">@message.AuthorRole</span>
+                                    <span class="tag">@message.CreatedUtc.ToString("dd MMM HH:mm")</span>
+                                </span>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <h4 style="margin:0 0 0.45rem;">Status History</h4>
+                @if (_selectedTicket.StatusHistory.Count == 0)
+                {
+                    <p style="color:var(--text-muted);">No status transitions recorded.</p>
+                }
+                else
+                {
+                    <ul class="data-list">
+                        @foreach (var status in _selectedTicket.StatusHistory.Take(8))
+                        {
+                            <li>
+                                <span class="list-label">@status.FromStatus → @status.ToStatus</span>
+                                <span class="tag">@status.CreatedUtc.ToString("dd MMM HH:mm")</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            }
+        </article>
+    </div>
+}
+
+@code {
+    private bool _ready;
+    private bool _creating;
+    private string _subject = string.Empty;
+    private string _priority = "Normal";
+    private string _description = string.Empty;
+    private string? _createError;
+    private string? _createSuccess;
+    private List<SupportTicketDto> _tickets = [];
+    private bool _loadingList;
+    private int _pageNumber = 1;
+    private int _pageSize = 10;
+    private int _totalCount;
+    private int _totalPages = 1;
+    private string _search = string.Empty;
+    private bool _loadingDetail;
+    private Guid? _selectedTicketId;
+    private SupportTicketDetailDto? _selectedTicket;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loadingList = true;
+        var tickets = await Api.GetSupportTicketsPagedAsync(_pageNumber, _pageSize, "createdUtc", "desc", string.IsNullOrWhiteSpace(_search) ? null : _search);
+        _tickets = tickets?.Data?.Items?.ToList() ?? [];
+        _totalCount = tickets?.Data?.TotalCount ?? 0;
+        _totalPages = Math.Max(1, tickets?.Data?.TotalPages ?? 1);
+        if (_tickets.Count > 0 && (_selectedTicketId is null || _tickets.All(x => x.Id != _selectedTicketId.Value)))
+        {
+            await SelectTicketAsync(_tickets[0].Id);
+        }
+        _loadingList = false;
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task SelectTicketAsync(Guid id)
+    {
+        _selectedTicketId = id;
+        _loadingDetail = true;
+        try
+        {
+            var detail = await Api.GetSupportTicketDetailAsync(id);
+            _selectedTicket = detail?.Success == true ? detail.Data : null;
+        }
+        finally
+        {
+            _loadingDetail = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        _createError = _createSuccess = null;
+        if (string.IsNullOrWhiteSpace(_subject))
+        {
+            _createError = "Subject is required.";
+            return;
+        }
+
+        _creating = true;
+        try
+        {
+            var result = await Api.CreateSupportTicketAsync(new CreateSupportTicketDto(_subject, _priority, _description));
+            if (result?.Success == true && result.Data is not null)
+            {
+                _pageNumber = 1;
+                _subject = string.Empty;
+                _description = string.Empty;
+                _priority = "Normal";
+                _createSuccess = "Ticket submitted successfully.";
+                await ReloadAsync();
+            }
+            else
+            {
+                _createError = result?.Error?.Message ?? "Failed to submit ticket.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _createError = ex.Message;
+        }
+        finally
+        {
+            _creating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        var next = Math.Clamp(page, 1, _totalPages);
+        if (next == _pageNumber) return;
+        _pageNumber = next;
+        await ReloadAsync();
+    }
+
+    private async Task ApplyPageSizeAsync(ChangeEventArgs args)
+    {
+        if (args.Value is null || !int.TryParse(args.Value.ToString(), out var parsed)) return;
+        _pageSize = parsed;
+        _pageNumber = 1;
+        await ReloadAsync();
+    }
+
+    private async Task SearchAsync(ChangeEventArgs args)
+    {
+        _search = args.Value?.ToString() ?? string.Empty;
+        _pageNumber = 1;
+        await ReloadAsync();
+    }
+
+    private int RangeStart => _totalCount == 0 ? 0 : ((_pageNumber - 1) * _pageSize) + 1;
+    private int RangeEnd => Math.Min(_pageNumber * _pageSize, _totalCount);
+}

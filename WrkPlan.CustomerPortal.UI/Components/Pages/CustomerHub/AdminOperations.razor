@@ -1,0 +1,638 @@
+@page "/customerhub/assign-subscriptions"
+@page "/customerhub/quotes-contracts"
+@page "/customerhub/support-management"
+@page "/customerhub/integrations"
+@using Microsoft.AspNetCore.Components.Forms
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>@Title</h2>
+    <p>@Subtitle</p>
+</div>
+
+@if (RouteKey == "quotes-contracts")
+{
+    <div class="cards-grid">
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Generate Contract</h3>
+            <div class="field-row" style="grid-template-columns:1fr 1fr;">
+                <div>
+                    <label style="display:block;margin-bottom:0.25rem;color:var(--text-muted);font-size:0.78rem;">Customer Profile</label>
+                    <select @bind="_selectedProfileId">
+                        <option value="">Select profile</option>
+                        @foreach (var profile in _profiles)
+                        {
+                            <option value="@profile.CustomerProfileId">@profile.TenantName / @profile.ContactEmail</option>
+                        }
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block;margin-bottom:0.25rem;color:var(--text-muted);font-size:0.78rem;">Contract Number</label>
+                    <input @bind="_contractNumber" placeholder="CNT-2026-001" />
+                </div>
+            </div>
+
+            <div class="field-row" style="grid-template-columns:1fr 1fr;margin-top:0.65rem;">
+                <input @bind="_contractTitle" placeholder="Contract title" />
+                <input @bind="_contractVersion" placeholder="v1" />
+            </div>
+            <textarea @bind="_contractHeader" rows="2" style="margin-top:0.65rem;" placeholder="Header text"></textarea>
+            <textarea @bind="_contractBody" rows="4" style="margin-top:0.55rem;" placeholder="Body/JSON content"></textarea>
+
+            <div class="field-row" style="grid-template-columns:1fr 1fr;margin-top:0.65rem;">
+                <input @bind="_effectiveDateText" placeholder="yyyy-MM-dd" />
+                <input @bind="_expiryDateText" placeholder="yyyy-MM-dd" />
+            </div>
+
+            <div style="display:flex;gap:0.55rem;flex-wrap:wrap;margin-top:0.75rem;">
+                <button @onclick="CreateGeneratedContractAsync" disabled="@_contractBusy">@(_contractBusy ? "Saving..." : "Create Generated Contract")</button>
+                <button class="ghost-btn" @onclick="LoadContractDataAsync">Refresh</button>
+            </div>
+
+            <div class="panel" style="padding:0.8rem;margin-top:0.75rem;">
+                <div style="font-weight:700;margin-bottom:0.35rem;">Manual Contract Upload</div>
+                <InputFile OnChange="OnManualContractSelected" accept="application/pdf" />
+                <button style="margin-top:0.55rem;" @onclick="UploadManualContractAsync" disabled="@_contractBusy">Upload Manual Contract</button>
+            </div>
+        </article>
+
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Contracts List</h3>
+            @if (_contracts.Count == 0)
+            {
+                <p style="color:var(--text-muted);margin:0;">No contracts found.</p>
+            }
+            else
+            {
+                <ul class="data-list">
+                    @foreach (var contract in _contracts)
+                    {
+                        <li style="cursor:pointer;" @onclick="() => SelectContractAsync(contract.Id)">
+                            <span class="list-label">@contract.ContractNumber - @contract.Title</span>
+                            <span style="display:flex;gap:0.45rem;align-items:center;">
+                                <span class="tag">@contract.Status</span>
+                                @if (_selectedContract?.Id == contract.Id)
+                                {
+                                    <span class="badge badge-ok">Selected</span>
+                                }
+                            </span>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (_selectedContract is not null)
+            {
+                <div style="margin-top:0.8rem;">
+                    <h4 style="margin:0 0 0.45rem;">Transition Status</h4>
+                    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                        <select @bind="_targetContractStatus" style="max-width:220px;">
+                            @foreach (var status in _contractStatuses)
+                            {
+                                <option value="@status">@status</option>
+                            }
+                        </select>
+                        <input @bind="_transitionNote" placeholder="Optional note" style="max-width:260px;" />
+                        <button class="ghost-btn" @onclick="TransitionContractAsync" disabled="@_contractBusy">Apply</button>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_contractMessage))
+            {
+                <div class="auth-status success" style="margin-top:0.7rem;">@_contractMessage</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(_contractError))
+            {
+                <div class="auth-status error" style="margin-top:0.7rem;">@_contractError</div>
+            }
+        </article>
+    </div>
+}
+else if (RouteKey == "support-management")
+{
+    <div class="cards-grid">
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Support Inbox</h3>
+            <div class="panel" style="padding:0.75rem;margin-bottom:0.75rem;display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
+                <input @bind="_supportSearch" placeholder="Search by ticket no/subject" style="max-width:240px;" />
+                <select @bind="_supportStatusFilter" style="max-width:180px;">
+                    <option value="">All statuses</option>
+                    @foreach (var status in _supportStatuses)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+                <select @bind="_supportPriorityFilter" style="max-width:180px;">
+                    <option value="">All priorities</option>
+                    <option value="Low">Low</option>
+                    <option value="Normal">Normal</option>
+                    <option value="High">High</option>
+                    <option value="Critical">Critical</option>
+                </select>
+                <button class="ghost-btn" @onclick="LoadSupportInboxAsync">Apply Filters</button>
+            </div>
+
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.65rem;">
+                <span class="tag">Open: @_supportOpen</span>
+                <span class="tag">In Progress: @_supportInProgress</span>
+                <span class="tag">Resolved: @_supportResolved</span>
+                <span class="tag">Overdue: @_supportOverdue</span>
+            </div>
+
+            @if (_supportTickets.Count == 0)
+            {
+                <p style="color:var(--text-muted);margin:0;">No support tickets found for selected filters.</p>
+            }
+            else
+            {
+                <ul class="data-list">
+                    @foreach (var ticket in _supportTickets)
+                    {
+                        <li style="cursor:pointer;" @onclick="() => SelectSupportTicketAsync(ticket.Id)">
+                            <span class="list-label">@ticket.TicketNumber - @ticket.Subject</span>
+                            <span style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;">
+                                <span class="badge @(ticket.Priority is "High" or "Critical" ? "badge-error" : "badge-warn")">@ticket.Priority</span>
+                                <span class="tag">@ticket.Status</span>
+                                @if (!string.IsNullOrWhiteSpace(ticket.TenantName))
+                                {
+                                    <span class="tag">@ticket.TenantName</span>
+                                }
+                            </span>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Ticket Actions</h3>
+            @if (_selectedSupportTicket is null)
+            {
+                <p style="color:var(--text-muted);margin:0;">Select a ticket to reply, change status, or resolve.</p>
+            }
+            else
+            {
+                <div class="field-row" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:0.75rem;">
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Ticket</div>
+                        <div style="font-weight:700;">@_selectedSupportTicket.TicketNumber</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Status</div>
+                        <div style="font-weight:700;">@_selectedSupportTicket.Status</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Resolved In</div>
+                        <div style="font-weight:700;">@(_selectedSupportTicket.ResolvedInDays.HasValue ? $"{_selectedSupportTicket.ResolvedInDays} day(s)" : "Pending")</div>
+                    </div>
+                </div>
+
+                <textarea @bind="_adminReply" rows="3" placeholder="Reply to customer"></textarea>
+                <button class="ghost-btn" style="margin-top:0.5rem;" @onclick="ReplySupportTicketAsync" disabled="@_supportBusy">Send Reply</button>
+
+                <div class="field-row" style="grid-template-columns:1fr 1fr;margin-top:0.8rem;">
+                    <select @bind="_targetSupportStatus">
+                        @foreach (var status in _supportStatuses)
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                    <input @bind="_supportStatusNote" placeholder="Status note" />
+                </div>
+                <button class="ghost-btn" style="margin-top:0.5rem;" @onclick="ChangeSupportStatusAsync" disabled="@_supportBusy">Change Status</button>
+
+                <textarea @bind="_resolutionMessage" rows="3" style="margin-top:0.8rem;" placeholder="Resolution message"></textarea>
+                <button style="margin-top:0.5rem;" @onclick="ResolveSupportTicketAsync" disabled="@_supportBusy">Mark Resolved</button>
+
+                <h4 style="margin:0.85rem 0 0.35rem;">Conversation</h4>
+                <ul class="data-list">
+                    @foreach (var message in _selectedSupportTicket.Messages)
+                    {
+                        <li>
+                            <span class="list-label">@message.Message</span>
+                            <span style="display:flex;gap:0.35rem;align-items:center;">
+                                <span class="tag">@message.AuthorRole</span>
+                                <span class="tag">@message.CreatedUtc.ToString("dd MMM HH:mm")</span>
+                            </span>
+                        </li>
+                    }
+                </ul>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_supportMessage))
+            {
+                <div class="auth-status success" style="margin-top:0.7rem;">@_supportMessage</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(_supportError))
+            {
+                <div class="auth-status error" style="margin-top:0.7rem;">@_supportError</div>
+            }
+        </article>
+    </div>
+}
+else
+{
+    <article class="panel" style="padding:1.1rem;">
+        @if (RouteKey == "assign-subscriptions")
+        {
+            <p style="margin:0 0 0.75rem;color:var(--text-secondary);">Use tenant-level controls to assign or upgrade plans.</p>
+            <a href="/customerhub/subscription-plans" class="btn-hero secondary" style="padding:0.55rem 1rem;font-size:0.84rem;">Open Subscription Plans</a>
+        }
+        else
+        {
+            <p style="margin:0;color:var(--text-secondary);">This admin workspace is ready for operational workflows and guarded for WrkPlan administrators only.</p>
+        }
+    </article>
+}
+
+@code {
+    private string RouteKey = "";
+    private string Title = "Admin Area";
+    private string Subtitle = "";
+
+    private List<ContractCustomerProfileOptionDto> _profiles = [];
+    private List<ContractSummaryDto> _contracts = [];
+    private ContractDetailDto? _selectedContract;
+    private string _selectedProfileId = string.Empty;
+    private string _contractNumber = string.Empty;
+    private string _contractTitle = "WrkPlan Service Agreement";
+    private string _contractVersion = "v1";
+    private string _contractHeader = "Service terms";
+    private string _contractBody = "{}";
+    private string _effectiveDateText = DateTime.UtcNow.ToString("yyyy-MM-dd");
+    private string _expiryDateText = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
+    private string _targetContractStatus = "Draft";
+    private string _transitionNote = string.Empty;
+    private bool _contractBusy;
+    private string? _contractMessage;
+    private string? _contractError;
+    private string? _manualContractFileBase64;
+    private string _manualContractFileName = "manual-contract.pdf";
+    private string _manualContractContentType = "application/pdf";
+    private readonly List<string> _contractStatuses = ["Draft", "Sent to Customer", "Viewed", "Signature Pending", "Signed by Customer", "Signed by Both", "Completed", "Rejected/Needs Revision"];
+
+    private List<SupportTicketDto> _supportTickets = [];
+    private SupportTicketDetailDto? _selectedSupportTicket;
+    private string _supportSearch = string.Empty;
+    private string _supportStatusFilter = string.Empty;
+    private string _supportPriorityFilter = string.Empty;
+    private string _targetSupportStatus = "In Progress";
+    private string _supportStatusNote = string.Empty;
+    private string _adminReply = string.Empty;
+    private string _resolutionMessage = string.Empty;
+    private bool _supportBusy;
+    private string? _supportMessage;
+    private string? _supportError;
+    private int _supportOpen;
+    private int _supportInProgress;
+    private int _supportResolved;
+    private int _supportOverdue;
+    private readonly List<string> _supportStatuses = ["Open", "In Progress", "Awaiting Customer", "Resolved", "Closed"];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", forceLoad: true);
+            return;
+        }
+
+        var path = Nav.ToBaseRelativePath(Nav.Uri).ToLowerInvariant();
+        RouteKey = path.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "";
+
+        (Title, Subtitle) = RouteKey switch
+        {
+            "assign-subscriptions" => ("Assign/Upgrade Subscriptions", "Manage tenant plan assignments and upgrades."),
+            "billing-monitoring" => ("Billing & Payments Monitoring", "Track payment health, anomalies, and aging trends."),
+            "quotes-contracts" => ("Quotes & Contracts", "Handle commercial quotes and contract lifecycle."),
+            "announcements-management" => ("Announcements Management", "Publish and manage tenant communications."),
+            "support-management" => ("Support Management", "Review escalations and service quality."),
+            "reports" => ("Reports / Audit Logs", "Analyze system usage and audit activity."),
+            "integrations" => ("Integrations", "Configure integration endpoints and sync behavior."),
+            "settings" => ("Settings", "Platform-level configuration and governance controls."),
+            _ => ("Admin Area", "Role-focused operations.")
+        };
+
+        if (RouteKey == "quotes-contracts")
+        {
+            await LoadContractDataAsync();
+        }
+        else if (RouteKey == "support-management")
+        {
+            await LoadSupportInboxAsync();
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task LoadContractDataAsync()
+    {
+        _contractError = null;
+        var profileResponse = await Api.GetContractCustomerProfilesAsync();
+        _profiles = profileResponse?.Data?.ToList() ?? [];
+
+        var contractsResponse = await Api.GetContractsAsync();
+        _contracts = contractsResponse?.Data?.OrderByDescending(x => x.EffectiveUtc).ToList() ?? [];
+
+        if (_contracts.Count > 0)
+        {
+            await SelectContractAsync(_contracts[0].Id);
+        }
+    }
+
+    private async Task SelectContractAsync(Guid id)
+    {
+        var detail = await Api.GetContractDetailAsync(id);
+        _selectedContract = detail?.Success == true ? detail.Data : null;
+        StateHasChanged();
+    }
+
+    private async Task CreateGeneratedContractAsync()
+    {
+        _contractMessage = _contractError = null;
+        if (!Guid.TryParse(_selectedProfileId, out var profileId))
+        {
+            _contractError = "Select a customer profile.";
+            return;
+        }
+        if (!DateTime.TryParse(_effectiveDateText, out var effectiveUtc) || !DateTime.TryParse(_expiryDateText, out var expiryUtc))
+        {
+            _contractError = "Provide valid effective and expiry dates.";
+            return;
+        }
+
+        _contractBusy = true;
+        try
+        {
+            var result = await Api.CreateGeneratedContractAsync(new CreateGeneratedContractDto(
+                profileId,
+                _contractNumber,
+                _contractTitle,
+                _contractHeader,
+                _contractBody,
+                DateTime.SpecifyKind(effectiveUtc, DateTimeKind.Utc),
+                DateTime.SpecifyKind(expiryUtc, DateTimeKind.Utc),
+                _contractVersion,
+                "Draft"));
+
+            if (result?.Success == true)
+            {
+                _contractMessage = "Generated contract created.";
+                await LoadContractDataAsync();
+            }
+            else
+            {
+                _contractError = result?.Error?.Message ?? "Failed to create contract.";
+            }
+        }
+        finally
+        {
+            _contractBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnManualContractSelected(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null) return;
+
+        _manualContractFileName = file.Name;
+        _manualContractContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/pdf" : file.ContentType;
+        using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _manualContractFileBase64 = Convert.ToBase64String(ms.ToArray());
+    }
+
+    private async Task UploadManualContractAsync()
+    {
+        _contractMessage = _contractError = null;
+        if (!Guid.TryParse(_selectedProfileId, out var profileId))
+        {
+            _contractError = "Select a customer profile.";
+            return;
+        }
+        if (!DateTime.TryParse(_effectiveDateText, out var effectiveUtc) || !DateTime.TryParse(_expiryDateText, out var expiryUtc))
+        {
+            _contractError = "Provide valid effective and expiry dates.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_manualContractFileBase64))
+        {
+            _contractError = "Select a manual contract file first.";
+            return;
+        }
+
+        _contractBusy = true;
+        try
+        {
+            var result = await Api.UploadManualContractAsync(new UploadManualContractDto(
+                profileId,
+                _contractNumber,
+                DateTime.SpecifyKind(effectiveUtc, DateTimeKind.Utc),
+                DateTime.SpecifyKind(expiryUtc, DateTimeKind.Utc),
+                _contractVersion,
+                _manualContractFileName,
+                _manualContractContentType,
+                _manualContractFileBase64));
+
+            if (result?.Success == true)
+            {
+                _contractMessage = "Manual contract uploaded.";
+                await LoadContractDataAsync();
+            }
+            else
+            {
+                _contractError = result?.Error?.Message ?? "Manual upload failed.";
+            }
+        }
+        finally
+        {
+            _contractBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task TransitionContractAsync()
+    {
+        _contractMessage = _contractError = null;
+        if (_selectedContract is null)
+        {
+            _contractError = "Select a contract first.";
+            return;
+        }
+
+        _contractBusy = true;
+        try
+        {
+            var result = await Api.TransitionContractStatusAsync(new ContractStatusTransitionDto(_selectedContract.Id, _targetContractStatus, _transitionNote));
+            if (result?.Success == true)
+            {
+                _contractMessage = "Contract status updated.";
+                await LoadContractDataAsync();
+            }
+            else
+            {
+                _contractError = result?.Error?.Message ?? "Unable to change status.";
+            }
+        }
+        finally
+        {
+            _contractBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadSupportInboxAsync()
+    {
+        _supportError = null;
+        var response = await Api.GetAdminSupportTicketsAsync(new AdminSupportTicketFilterDto(
+            PageNumber: 1,
+            PageSize: 50,
+            Search: string.IsNullOrWhiteSpace(_supportSearch) ? null : _supportSearch,
+            Status: string.IsNullOrWhiteSpace(_supportStatusFilter) ? null : _supportStatusFilter,
+            Priority: string.IsNullOrWhiteSpace(_supportPriorityFilter) ? null : _supportPriorityFilter));
+
+        if (response?.Success != true || response.Data is null)
+        {
+            _supportError = response?.Error?.Message ?? "Unable to load support tickets.";
+            _supportTickets = [];
+            return;
+        }
+
+        _supportTickets = response.Data.Tickets.Items.ToList();
+        _supportOpen = response.Data.Counters.Open;
+        _supportInProgress = response.Data.Counters.InProgress;
+        _supportResolved = response.Data.Counters.Resolved;
+        _supportOverdue = response.Data.Counters.Overdue;
+
+        if (_supportTickets.Count > 0)
+        {
+            await SelectSupportTicketAsync(_supportTickets[0].Id);
+        }
+        StateHasChanged();
+    }
+
+    private async Task SelectSupportTicketAsync(Guid id)
+    {
+        var detail = await Api.GetSupportTicketDetailAsync(id);
+        _selectedSupportTicket = detail?.Success == true ? detail.Data : null;
+        StateHasChanged();
+    }
+
+    private async Task ReplySupportTicketAsync()
+    {
+        _supportMessage = _supportError = null;
+        if (_selectedSupportTicket is null)
+        {
+            _supportError = "Select a ticket first.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_adminReply))
+        {
+            _supportError = "Reply message is required.";
+            return;
+        }
+
+        _supportBusy = true;
+        try
+        {
+            var response = await Api.AdminReplySupportTicketAsync(new AdminReplyTicketDto(_selectedSupportTicket.Id, _adminReply));
+            if (response?.Success == true)
+            {
+                _supportMessage = "Reply sent.";
+                _adminReply = string.Empty;
+                await SelectSupportTicketAsync(_selectedSupportTicket.Id);
+            }
+            else
+            {
+                _supportError = response?.Error?.Message ?? "Reply failed.";
+            }
+        }
+        finally
+        {
+            _supportBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ChangeSupportStatusAsync()
+    {
+        _supportMessage = _supportError = null;
+        if (_selectedSupportTicket is null)
+        {
+            _supportError = "Select a ticket first.";
+            return;
+        }
+
+        _supportBusy = true;
+        try
+        {
+            var response = await Api.ChangeSupportTicketStatusAsync(new ChangeTicketStatusDto(_selectedSupportTicket.Id, _targetSupportStatus, _supportStatusNote));
+            if (response?.Success == true)
+            {
+                _supportMessage = "Status updated.";
+                await SelectSupportTicketAsync(_selectedSupportTicket.Id);
+                await LoadSupportInboxAsync();
+            }
+            else
+            {
+                _supportError = response?.Error?.Message ?? "Status update failed.";
+            }
+        }
+        finally
+        {
+            _supportBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ResolveSupportTicketAsync()
+    {
+        _supportMessage = _supportError = null;
+        if (_selectedSupportTicket is null)
+        {
+            _supportError = "Select a ticket first.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_resolutionMessage))
+        {
+            _supportError = "Resolution message is required.";
+            return;
+        }
+
+        _supportBusy = true;
+        try
+        {
+            var response = await Api.ResolveSupportTicketAsync(new ResolveTicketDto(_selectedSupportTicket.Id, _resolutionMessage));
+            if (response?.Success == true)
+            {
+                _supportMessage = "Ticket resolved.";
+                _resolutionMessage = string.Empty;
+                await SelectSupportTicketAsync(_selectedSupportTicket.Id);
+                await LoadSupportInboxAsync();
+            }
+            else
+            {
+                _supportError = response?.Error?.Message ?? "Resolve action failed.";
+            }
+        }
+        finally
+        {
+            _supportBusy = false;
+            StateHasChanged();
+        }
+    }
+}

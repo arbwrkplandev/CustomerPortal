@@ -1,0 +1,182 @@
+@page "/customerhub/questionnaire-setup"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128221; Questionnaire Setup</h2>
+    <p>Define onboarding questions that customers complete during account onboarding.</p>
+</div>
+
+@if (IsLoading)
+{
+    <div class="panel" style="text-align:center;padding:2rem;">
+        <p style="color:var(--text-muted);animation:pulse 1.8s infinite;">Loading questions...</p>
+    </div>
+}
+else
+{
+    <div class="panel" style="padding:1rem 1.2rem;margin-bottom:1rem;">
+        <h3 class="section-title" style="margin-bottom:0.55rem;">Add Question</h3>
+        <div style="display:grid;grid-template-columns:minmax(260px,2fr) minmax(120px,0.5fr) auto;gap:0.65rem;align-items:end;">
+            <div>
+                <label style="font:600 0.74rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Question text</label>
+                <input @bind="NewQuestionText" placeholder="Enter a question to ask customers" />
+            </div>
+            <div>
+                <label style="font:600 0.74rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Order</label>
+                <input @bind="NewQuestionOrder" type="number" min="1" />
+            </div>
+            <label style="display:flex;gap:0.45rem;align-items:center;padding:0.55rem 0.2rem;color:var(--text-secondary);font-weight:600;">
+                <input @bind="NewQuestionRequired" type="checkbox" style="width:16px;height:16px;" /> Required
+            </label>
+        </div>
+        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.8rem;">
+            <button @onclick="AddQuestionAsync" disabled="@IsSaving" style="padding:0.55rem 1rem;">@(IsSaving ? "Saving..." : "Add Question")</button>
+            @if (!string.IsNullOrWhiteSpace(Error))
+            {
+                <span class="status-overdue" style="font-size:0.82rem;">@Error</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Success))
+            {
+                <span class="status-ok" style="font-size:0.82rem;">@Success</span>
+            }
+        </div>
+    </div>
+
+    <div class="panel" style="padding:0;overflow:hidden;">
+        <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border);background:rgba(148,163,184,0.06);">
+                        <th style="padding:0.75rem 1rem;text-align:left;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Order</th>
+                        <th style="padding:0.75rem 1rem;text-align:left;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Question</th>
+                        <th style="padding:0.75rem 1rem;text-align:center;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Required</th>
+                        <th style="padding:0.75rem 1rem;text-align:center;font:600 0.75rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.07rem;color:var(--text-muted);">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Items.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" style="padding:1.2rem;color:var(--text-muted);text-align:center;">No template questions configured yet.</td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var item in Items.OrderBy(x => x.SortOrder))
+                        {
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <td style="padding:0.85rem 1rem;">@item.SortOrder</td>
+                                <td style="padding:0.85rem 1rem;color:var(--text-primary);font-weight:600;">@item.QuestionText</td>
+                                <td style="padding:0.85rem 1rem;text-align:center;">
+                                    <span class="badge @(item.IsRequired ? "badge-ok" : "badge-warn")">@(item.IsRequired ? "Yes" : "No")</span>
+                                </td>
+                                <td style="padding:0.85rem 1rem;text-align:center;">
+                                    <button @onclick="() => DeleteQuestionAsync(item.Id)" class="ghost-btn" style="padding:0.35rem 0.8rem;font-size:0.78rem;">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    private List<QuestionnaireTemplateItemDto> Items { get; set; } = [];
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private string Error { get; set; } = string.Empty;
+    private string Success { get; set; } = string.Empty;
+    private string NewQuestionText { get; set; } = string.Empty;
+    private int NewQuestionOrder { get; set; } = 1;
+    private bool NewQuestionRequired { get; set; } = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", forceLoad: true);
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        IsLoading = true;
+        Error = string.Empty;
+        var result = await Api.GetQuestionnaireTemplateItemsAsync();
+        if (result?.Success == true && result.Data is not null)
+        {
+            Items = result.Data.OrderBy(x => x.SortOrder).ToList();
+            NewQuestionOrder = Items.Count == 0 ? 1 : Items.Max(x => x.SortOrder) + 1;
+        }
+        else
+        {
+            Items = [];
+            Error = result?.Error?.Message ?? "Unable to load questionnaire template.";
+        }
+
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task AddQuestionAsync()
+    {
+        Error = string.Empty;
+        Success = string.Empty;
+        if (string.IsNullOrWhiteSpace(NewQuestionText))
+        {
+            Error = "Question text is required.";
+            return;
+        }
+
+        IsSaving = true;
+        var result = await Api.CreateQuestionnaireTemplateItemAsync(new UpsertQuestionnaireTemplateDto(
+            NewQuestionText.Trim(),
+            NewQuestionRequired,
+            NewQuestionOrder));
+
+        if (result?.Success == true && result.Data is not null)
+        {
+            Items.Add(result.Data);
+            Success = "Question added to template.";
+            NewQuestionText = string.Empty;
+            NewQuestionOrder = Items.Max(x => x.SortOrder) + 1;
+        }
+        else
+        {
+            Error = result?.Error?.Message ?? "Failed to add question.";
+        }
+
+        IsSaving = false;
+    }
+
+    private async Task DeleteQuestionAsync(Guid id)
+    {
+        Error = string.Empty;
+        Success = string.Empty;
+
+        var result = await Api.DeleteQuestionnaireTemplateItemAsync(id);
+        if (result?.Success == true)
+        {
+            Items = Items.Where(x => x.Id != id).ToList();
+            Success = "Question removed.";
+        }
+        else
+        {
+            Error = result?.Error?.Message ?? "Failed to delete question.";
+        }
+    }
+}

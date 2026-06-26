@@ -1,0 +1,158 @@
+﻿@inject SessionService Session
+@inject NavigationManager Nav
+
+<button class="brand brand-button" @onclick="NavigateHome" title="Home">
+    <div class="brand-mark">WP</div>
+    <div class="brand-text">
+        <h3>WrkPlan</h3>
+        <p>Multi-tenant platform</p>
+    </div>
+</button>
+
+<nav class="menu-list">
+    @if (!_ready)
+    {
+        <p class="nav-group-label">Loading</p>
+    }
+    else if (!Session.IsAuthenticated)
+    {
+        <p class="nav-group-label">Access</p>
+        <NavLink class="menu-link" href="" Match="NavLinkMatch.All">
+            <span class="nav-icon">&#127968;</span> <span class="nav-text">Home</span>
+        </NavLink>
+        <NavLink class="menu-link" href="auth/customer-login">
+            <span class="nav-icon">&#128100;</span> <span class="nav-text">Customer Login</span>
+        </NavLink>
+        <NavLink class="menu-link" href="auth/admin-login">
+            <span class="nav-icon">&#128737;</span> <span class="nav-text">Admin Login</span>
+        </NavLink>
+    }
+
+    @if (Session.IsAuthenticated && Session.Auth?.Role == "WrkPlanAdmin")
+    {
+        <p class="nav-group-label">Customer Hub</p>
+        <NavLink class="menu-link" href="customerhub/dashboard" Match="NavLinkMatch.Prefix">
+            <span class="nav-icon">&#127968;</span> <span class="nav-text">Home</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/assign-subscriptions">
+            <span class="nav-icon">&#128260;</span> <span class="nav-text">Assign/Upgrade Subscriptions</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/subscription-plans">
+            <span class="nav-icon">&#128230;</span> <span class="nav-text">Subscription Plans</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/erp-clients">
+            <span class="nav-icon">&#128295;</span> <span class="nav-text">ERP Clients</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/tenants">
+            <span class="nav-icon">&#128101;</span> <span class="nav-text">Tenants</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/questionnaire-setup">
+            <span class="nav-icon">&#128221;</span> <span class="nav-text">Questionnaire Setup</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/billing-monitoring">
+            <span class="nav-icon">&#128184;</span> <span class="nav-text">Billing Monitoring</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/quotes-contracts">
+            <span class="nav-icon">&#128196;</span> <span class="nav-text">Quotes/Contracts</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/announcements-management">
+            <span class="nav-icon">&#128227;</span> <span class="nav-text">Announcements Mgmt</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/support-management">
+            <span class="nav-icon">&#128736;</span> <span class="nav-text">Support Mgmt</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/reports">
+            <span class="nav-icon">&#128202;</span> <span class="nav-text">Reports/Audit</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/integrations">
+            <span class="nav-icon">&#129302;</span> <span class="nav-text">Integrations</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerhub/settings">
+            <span class="nav-icon">&#9881;</span> <span class="nav-text">Settings</span>
+        </NavLink>
+        <button class="menu-link menu-link-button" @onclick="RequestLogout">
+            <span class="nav-icon">&#128682;</span> <span class="nav-text">Logout</span>
+        </button>
+    }
+
+    @if (Session.IsAuthenticated && Session.Auth?.Role == "CustomerAdmin")
+    {
+        <p class="nav-group-label">Customer Portal</p>
+        <NavLink class="menu-link" href="customerportal/dashboard" Match="NavLinkMatch.Prefix">
+            <span class="nav-icon">&#127968;</span> <span class="nav-text">Home</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/account">
+            <span class="nav-icon">&#128100;</span> <span class="nav-text">Account Info</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/subscription">
+            <span class="nav-icon">&#128230;</span> <span class="nav-text">Subscription Info</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/invoices">
+            <span class="nav-icon">&#128181;</span> <span class="nav-text">Invoices</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/contracts">
+            <span class="nav-icon">&#128196;</span> <span class="nav-text">Contracts</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/support-tickets">
+            <span class="nav-icon">&#128220;</span> <span class="nav-text">Support Tickets</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/announcements">
+            <span class="nav-icon">&#128226;</span> <span class="nav-text">Announcements</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/resources">
+            <span class="nav-icon">&#128218;</span> <span class="nav-text">Resources</span>
+        </NavLink>
+        <NavLink class="menu-link" href="customerportal/onboarding">
+            <span class="nav-icon">&#9989;</span> <span class="nav-text">Onboarding Hub</span>
+        </NavLink>
+        <button class="menu-link menu-link-button" @onclick="RequestLogout">
+            <span class="nav-icon">&#128682;</span> <span class="nav-text">Logout</span>
+        </button>
+    }
+</nav>
+
+<div class="sidebar-footer">WrkPlan v1.0 &bull; &copy; 2025</div>
+
+@code {
+    [Parameter] public bool Collapsed { get; set; }
+    [Parameter] public EventCallback OnLogoutRequested { get; set; }
+
+    private bool _ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnSessionChanged;
+        await Session.TryRestoreAsync();
+        _ready = true;
+    }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+    private void NavigateHome()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/");
+            return;
+        }
+
+        Nav.NavigateTo(Session.Auth?.Role == "WrkPlanAdmin" ? "/customerhub/dashboard" : "/customerportal/dashboard");
+    }
+
+    private async Task RequestLogout()
+    {
+        if (OnLogoutRequested.HasDelegate)
+        {
+            await OnLogoutRequested.InvokeAsync();
+            return;
+        }
+
+        await Session.ClearAsync();
+        Nav.NavigateTo("/", true);
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+    }
+}

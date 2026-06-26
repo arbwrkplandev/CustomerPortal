@@ -1,0 +1,317 @@
+@page "/customerportal/subscription"
+@using System.Text.Json
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h2>&#128230; My Subscription</h2>
+    <p>Your current plan, included features, and billing details.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="sub-loading"><div class="sub-spinner"></div></div>
+}
+else if (_error is not null)
+{
+    <article class="dashboard-card sub-error">
+        <p style="font-size:1.8rem;">&#128230;</p>
+        <h3>No Subscription Found</h3>
+        <p>@_error</p>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin-top:0.5rem;">Contact your account manager to set up a subscription plan.</p>
+    </article>
+}
+else if (_sub is not null)
+{
+    <!-- Status banner -->
+    <div class="sub-status-banner @StatusBannerClass(_sub.Status)">
+        <span>@StatusBannerIcon(_sub.Status)</span>
+        <span>@StatusBannerText(_sub.Status, _sub.RenewalDate)</span>
+    </div>
+
+    <div class="cards-grid sub-grid">
+        <!-- Main plan card -->
+        <article class="dashboard-card sub-plan-card">
+            <div class="sub-plan-badge">
+                <span class="badge badge-ok">Active Plan</span>
+            </div>
+            <h2 class="sub-plan-name">@_sub.PlanName</h2>
+            @if (!string.IsNullOrWhiteSpace(_sub.PlanDescription))
+            {
+                <p class="sub-plan-desc">@_sub.PlanDescription</p>
+            }
+            <div class="sub-price-row">
+                <span class="sub-price">@_sub.Price.ToString("C0")</span>
+                <span class="sub-cycle">/ @_sub.BillingCycle</span>
+            </div>
+
+            <div class="sub-dates">
+                <div class="sub-date-item">
+                    <p class="sub-date-label">Start Date</p>
+                    <p class="sub-date-value">@_sub.StartDate.ToString("MMM dd, yyyy")</p>
+                </div>
+                <div class="sub-date-item">
+                    <p class="sub-date-label">End Date</p>
+                    <p class="sub-date-value">@_sub.EndDate.ToString("MMM dd, yyyy")</p>
+                </div>
+                <div class="sub-date-item">
+                    <p class="sub-date-label">Next Renewal</p>
+                    <p class="sub-date-value @(DaysToRenewal(_sub.RenewalDate) < 7 ? "sub-date-warn" : "")">
+                        @_sub.RenewalDate.ToString("MMM dd, yyyy")
+                        <span class="sub-days-chip">@DaysToRenewal(_sub.RenewalDate)d</span>
+                    </p>
+                </div>
+                <div class="sub-date-item">
+                    <p class="sub-date-label">Auto Renew</p>
+                    <p class="sub-date-value">@(_sub.AutoRenew ? "&#9989; Enabled" : "&#10060; Disabled")</p>
+                </div>
+            </div>
+        </article>
+
+        <!-- Features card -->
+        @if (_sub.Features.Count > 0)
+        {
+            <article class="dashboard-card sub-features-card">
+                <h3 class="sub-feat-title">&#127775; Included Features</h3>
+                <ul class="sub-features-list">
+                    @foreach (var feature in _sub.Features)
+                    {
+                        <li class="sub-feature-item">
+                            <span class="sub-feat-check">&#10003;</span>
+                            <span>@feature</span>
+                        </li>
+                    }
+                </ul>
+            </article>
+        }
+    </div>
+
+    <div class="panel sub-action-panel">
+        <h3 style="margin-bottom:0.75rem;font:700 1rem 'Sora',sans-serif;">&#128203; Billing Actions</h3>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <a href="/customerportal/invoices" class="btn-hero secondary" style="text-decoration:none;padding:0.6rem 1.2rem;font-size:0.85rem;">&#128181; View Invoices</a>
+            <button class="ghost-btn" @onclick="() => _showUpgradeNote = true">&#8679; Request Upgrade</button>
+        </div>
+
+        <div class="panel" style="padding:0.8rem;margin-top:0.8rem;">
+            <h4 style="margin:0 0 0.5rem;">Pay Online</h4>
+            <div class="field-row" style="grid-template-columns:1fr 1fr 1fr;">
+                <select @bind="_selectedCycle" @bind:after="OnCycleChangedAsync">
+                    <option value="Monthly">Monthly</option>
+                    <option value="Quarterly">Quarterly</option>
+                    <option value="Annual">Annual</option>
+                </select>
+                <input value="@(_preview?.StartDateUtc.ToString("yyyy-MM-dd") ?? string.Empty)" readonly />
+                <input value="@(_preview?.EndDateUtc.ToString("yyyy-MM-dd") ?? string.Empty)" readonly />
+            </div>
+
+            @if (_preview is not null)
+            {
+                <div class="field-row" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin-top:0.6rem;">
+                    <div class="panel" style="padding:0.55rem 0.7rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);">Plan Amount</div>
+                        <div style="font-weight:700;">@_preview.PlanAmount.ToString("C")</div>
+                    </div>
+                    <div class="panel" style="padding:0.55rem 0.7rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);">Taxes</div>
+                        <div style="font-weight:700;">@_preview.Taxes.ToString("C")</div>
+                    </div>
+                    <div class="panel" style="padding:0.55rem 0.7rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);">Fees</div>
+                        <div style="font-weight:700;">@_preview.Fees.ToString("C")</div>
+                    </div>
+                    <div class="panel" style="padding:0.55rem 0.7rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);">Total Payable</div>
+                        <div style="font-weight:700;">@_preview.TotalAmount.ToString("C")</div>
+                    </div>
+                </div>
+
+                <button style="margin-top:0.7rem;" @onclick="StartOnlinePaymentAsync" disabled="@_paymentBusy">@(_paymentBusy ? "Processing..." : "Pay Online with Razorpay")</button>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(_paymentError))
+        {
+            <div class="auth-status error" style="margin-top:0.7rem;">@_paymentError</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_paymentSuccess))
+        {
+            <div class="auth-status success" style="margin-top:0.7rem;">@_paymentSuccess</div>
+        }
+
+        @if (_showUpgradeNote)
+        {
+            <div style="margin-top:0.75rem;padding:0.85rem 1rem;border-radius:12px;background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.22);">
+                <p style="margin:0;font-size:0.88rem;color:var(--text-secondary);">
+                    &#9432; To upgrade your plan, contact your WrkPlan account manager or raise a support ticket.
+                    Your current plan is <strong>@_sub.PlanName</strong>.
+                </p>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private CustomerSubscriptionDto? _sub;
+    private string? _error;
+    private bool _ready;
+    private bool _showUpgradeNote;
+    private string _selectedCycle = "Monthly";
+    private PaymentPreviewDto? _preview;
+    private bool _paymentBusy;
+    private string? _paymentError;
+    private string? _paymentSuccess;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var result = await Api.GetMySubscriptionAsync();
+            if (result?.Success == true)
+            {
+                _sub = result.Data;
+                await LoadPreviewAsync();
+            }
+            else
+                _error = result?.Error?.Message ?? "No subscription found.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task OnCycleChangedAsync()
+    {
+        await LoadPreviewAsync();
+    }
+
+    private async Task LoadPreviewAsync()
+    {
+        _paymentError = null;
+        if (_sub is null)
+            return;
+
+        var response = await Api.GetPaymentPreviewAsync(new PaymentPreviewRequestDto(_sub.CustomerProfileId, _selectedCycle));
+        if (response?.Success == true)
+            _preview = response.Data;
+        else
+            _paymentError = response?.Error?.Message ?? "Unable to load payment preview.";
+    }
+
+    private async Task StartOnlinePaymentAsync()
+    {
+        _paymentError = _paymentSuccess = null;
+        if (_sub is null || _preview is null)
+        {
+            _paymentError = "Payment preview is not available.";
+            return;
+        }
+
+        _paymentBusy = true;
+        try
+        {
+            var orderResponse = await Api.CreateRazorpayOrderAsync(new RazorpayOrderCreateRequestDto(_sub.CustomerProfileId, _preview.InvoiceId, _selectedCycle));
+            if (orderResponse?.Success != true || orderResponse.Data is null)
+            {
+                _paymentError = orderResponse?.Error?.Message ?? "Unable to create payment order.";
+                return;
+            }
+
+            var order = orderResponse.Data;
+            var paymentResult = await JS.InvokeAsync<JsonElement>("wrkplanPayments.openRazorpayCheckout", new
+            {
+                key = order.KeyId,
+                orderId = order.OrderId,
+                amount = (int)Math.Round(order.Amount * 100m, 0, MidpointRounding.AwayFromZero),
+                currency = order.Currency,
+                name = "WrkPlan",
+                description = order.Description,
+                customerName = order.CustomerName,
+                customerEmail = order.CustomerEmail,
+                invoiceId = order.InvoiceId,
+                invoiceNumber = order.InvoiceNumber
+            });
+
+            var paymentId = paymentResult.TryGetProperty("razorpay_payment_id", out var p) ? p.GetString() : null;
+            var orderId = paymentResult.TryGetProperty("razorpay_order_id", out var o) ? o.GetString() : null;
+            var signature = paymentResult.TryGetProperty("razorpay_signature", out var s) ? s.GetString() : null;
+
+            if (string.IsNullOrWhiteSpace(paymentId) || string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(signature))
+            {
+                _paymentError = "Payment was cancelled or incomplete.";
+                return;
+            }
+
+            var verify = await Api.VerifyRazorpayPaymentAsync(new RazorpayVerifyRequestDto(
+                orderId,
+                paymentId,
+                signature,
+                order.InvoiceId,
+                _sub.CustomerProfileId,
+                _selectedCycle,
+                "Online"));
+
+            if (verify?.Success == true && verify.Data is not null && verify.Data.Success)
+            {
+                _paymentSuccess = "Payment successful. Subscription and invoice were updated.";
+                await LoadAsync();
+            }
+            else
+            {
+                _paymentError = verify?.Error?.Message ?? verify?.Data?.Message ?? "Payment verification failed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _paymentError = ex.Message;
+        }
+        finally
+        {
+            _paymentBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private static int DaysToRenewal(DateTime renewal) =>
+        Math.Max(0, (int)(renewal.Date - DateTime.UtcNow.Date).TotalDays);
+
+    private static string StatusBannerClass(string status) => status switch
+    {
+        "RenewalDue" => "sub-banner-warn",
+        "Overdue" => "sub-banner-error",
+        _ => "sub-banner-ok"
+    };
+
+    private static string StatusBannerIcon(string status) => status switch
+    {
+        "RenewalDue" => "&#9888;",
+        "Overdue" => "&#9888;",
+        _ => "&#9989;"
+    };
+
+    private static string StatusBannerText(string status, DateTime renewal) => status switch
+    {
+        "RenewalDue" => $"Your subscription renews on {renewal:MMM dd, yyyy} — please ensure payment is in place.",
+        "Overdue" => "Your subscription is past due. Please contact your account manager.",
+        _ => $"Subscription active. Next renewal: {renewal:MMM dd, yyyy}."
+    };
+}

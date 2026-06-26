@@ -1,0 +1,403 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Free App Ports",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"$ports=5148,5187; foreach ($p in $ports) { $conns=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue; foreach ($c in $conns) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue } }; Write-Host 'Ports cleaned: 5148, 5187'"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Run API",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"--project",
+				"WrkPlan.CustomerPortal.API\\WrkPlan.CustomerPortal.API.csproj",
+				"--no-build"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"group": "wrkplan"
+			}
+		},
+		{
+			"label": "Run UI",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"--project",
+				"WrkPlan.CustomerPortal.UI\\WrkPlan.CustomerPortal.UI.csproj",
+				"--no-build"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "dedicated",
+				"group": "wrkplan"
+			}
+		},
+		{
+			"label": "Run Project (API + UI)",
+			"dependsOrder": "parallel",
+			"dependsOn": [
+				"Run API",
+				"Run UI"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Restart Project (API + UI)",
+			"dependsOrder": "sequence",
+			"dependsOn": [
+				"Free App Ports",
+				"Run Project (API + UI)"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Solution",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "EF Add Migration ContractsSupportWorkflow",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"ContractsSupportWorkflow",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure/WrkPlan.CustomerPortal.Infrastructure.csproj",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API/WrkPlan.CustomerPortal.API.csproj",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "EF Update Database",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure/WrkPlan.CustomerPortal.Infrastructure.csproj",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API/WrkPlan.CustomerPortal.API.csproj",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Solution Now",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Stop Locked App Processes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 10184,8780 -Force -ErrorAction SilentlyContinue; Write-Host 'Stopped API/UI lock processes if running.'"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Solution After Stop",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "EF Add Migration ContractsSupportWorkflow Now",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"ContractsSupportWorkflow",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure/WrkPlan.CustomerPortal.Infrastructure.csproj",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API/WrkPlan.CustomerPortal.API.csproj",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "EF Database Update Now",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure/WrkPlan.CustomerPortal.Infrastructure.csproj",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API/WrkPlan.CustomerPortal.API.csproj",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "EF Database Update Retry",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure/WrkPlan.CustomerPortal.Infrastructure.csproj",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API/WrkPlan.CustomerPortal.API.csproj",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "EF Database Update Retry 2",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure/WrkPlan.CustomerPortal.Infrastructure.csproj",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API/WrkPlan.CustomerPortal.API.csproj",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Final Validation",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Build Final Validation Retry",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Git Status Snapshot",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build After PaymentAuditChanges",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Stop Running API Before Build",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 6104 -Force -ErrorAction SilentlyContinue; Get-Process dotnet -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*dotnet*' } | Select-Object -First 1 | Out-Null; Write-Host 'Stopped API lock process if present.'"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Stop API Process 6104",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 6104 -Force -ErrorAction SilentlyContinue; Write-Host 'Stopped process 6104 if running.'"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build Full Solution",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Rebuild After Razor Fixes",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Stop UI Process 19520",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"Stop-Process -Id 19520 -Force -ErrorAction SilentlyContinue; Write-Host 'Stopped process 19520 if running.'"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build After Unlock",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		},
+		{
+			"label": "Add Payment Admin Flow Migration",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"migrations",
+				"add",
+				"AdminBillingRazorpayAuditFlows",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Update Database After Admin Flow Migration",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ef",
+				"database",
+				"update",
+				"--project",
+				"WrkPlan.CustomerPortal.Infrastructure",
+				"--startup-project",
+				"WrkPlan.CustomerPortal.API",
+				"--context",
+				"AdminDbContext"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "List Changed Files",
+			"type": "shell",
+			"command": "git",
+			"args": [
+				"status",
+				"--short"
+			],
+			"problemMatcher": []
+		},
+		{
+			"label": "Build After Webhook Hardening",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"build",
+				"WrkPlan.CustomerPortal.sln"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			]
+		}
+	]
+}

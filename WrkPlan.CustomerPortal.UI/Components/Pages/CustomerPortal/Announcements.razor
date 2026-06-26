@@ -1,0 +1,153 @@
+@page "/customerportal/announcements"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128226; Announcements</h2>
+    <p>Platform updates, notices, and account communications.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="inv-loading"><div class="inv-spinner"></div></div>
+}
+else if (_error is not null)
+{
+    <article class="dashboard-card inv-error">
+        <h3>Unable to load announcements</h3>
+        <p>@_error</p>
+        <button class="btn-hero secondary" style="margin-top:1rem;" @onclick="LoadAsync">Retry</button>
+    </article>
+}
+else
+{
+    <div class="panel" style="padding:0.85rem 1rem;margin-bottom:0.9rem;display:flex;gap:0.65rem;align-items:center;flex-wrap:wrap;">
+        <input value="@_search" @onchange="SearchAsync" placeholder="Search announcements" style="max-width:280px;" />
+        <select value="@_pageSize" @onchange="ApplyPageSizeAsync" style="max-width:120px;">
+            <option value="10">10 / page</option>
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+        </select>
+        <span class="tag">Showing @RangeStart-@RangeEnd of @_totalCount</span>
+    </div>
+
+    @if (_loading)
+    {
+        <article class="dashboard-card"><p style="color:var(--text-muted);">Loading announcements...</p></article>
+    }
+    else if (_items.Count == 0)
+    {
+        <article class="dashboard-card" style="text-align:center;padding:2.4rem;">
+            <p style="font-size:2rem;margin-bottom:0.5rem;">&#128276;</p>
+            <h3>No announcements</h3>
+            <p style="color:var(--text-muted);">You are all caught up.</p>
+        </article>
+    }
+    else
+    {
+        <div class="cards-grid">
+            @foreach (var item in _items)
+            {
+                <article class="dashboard-card" style="grid-column:span 1;">
+                    <h3 style="margin:0 0 0.55rem;">@item.Title</h3>
+                    <p style="margin:0;color:var(--text-secondary);line-height:1.55;">@item.Message</p>
+                </article>
+            }
+        </div>
+
+        <div class="panel" style="padding:0.75rem 1rem;display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.85rem;">
+            <span style="font-size:0.84rem;color:var(--text-muted);">Page @_pageNumber of @_totalPages</span>
+            <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+                <button class="ghost-btn" style="padding:0.35rem 0.7rem;font-size:0.8rem;" @onclick="() => GoToPageAsync(_pageNumber - 1)" disabled="@(_pageNumber <= 1)">Previous</button>
+                @for (var p = Math.Max(1, _pageNumber - 2); p <= Math.Min(_totalPages, _pageNumber + 2); p++)
+                {
+                    var local = p;
+                    <button class="ghost-btn" style="padding:0.35rem 0.62rem;font-size:0.8rem;@(local == _pageNumber ? "border-color:rgba(14,165,233,0.5);color:var(--c-sky-500);font-weight:700;" : "")" @onclick="() => GoToPageAsync(local)">@local</button>
+                }
+                <button class="ghost-btn" style="padding:0.35rem 0.7rem;font-size:0.8rem;" @onclick="() => GoToPageAsync(_pageNumber + 1)" disabled="@(_pageNumber >= _totalPages)">Next</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _ready;
+    private bool _loading;
+    private string? _error;
+    private List<AnnouncementDto> _items = [];
+    private int _pageNumber = 1;
+    private int _pageSize = 10;
+    private int _totalCount;
+    private int _totalPages = 1;
+    private string _search = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetAnnouncementsPagedAsync(_pageNumber, _pageSize, "createdUtc", "desc", string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _items = result?.Data?.Items?.ToList() ?? [];
+            _totalCount = result?.Data?.TotalCount ?? 0;
+            _totalPages = Math.Max(1, result?.Data?.TotalPages ?? 1);
+            if (result?.Success == false)
+                _error = result.Error?.Message ?? "Failed to load announcements.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+            _ready = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        var next = Math.Clamp(page, 1, _totalPages);
+        if (next == _pageNumber) return;
+        _pageNumber = next;
+        await LoadAsync();
+    }
+
+    private async Task ApplyPageSizeAsync(ChangeEventArgs args)
+    {
+        if (args.Value is null || !int.TryParse(args.Value.ToString(), out var parsed)) return;
+        _pageSize = parsed;
+        _pageNumber = 1;
+        await LoadAsync();
+    }
+
+    private async Task SearchAsync(ChangeEventArgs args)
+    {
+        _search = args.Value?.ToString() ?? string.Empty;
+        _pageNumber = 1;
+        await LoadAsync();
+    }
+
+    private int RangeStart => _totalCount == 0 ? 0 : ((_pageNumber - 1) * _pageSize) + 1;
+    private int RangeEnd => Math.Min(_pageNumber * _pageSize, _totalCount);
+}

@@ -1,0 +1,188 @@
+@page "/customerportal/onboarding"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#9989; Onboarding Hub</h2>
+    <p>Complete implementation steps to go live. Gated steps unlock when dependencies are met.</p>
+</div>
+
+<!-- Progress Bar -->
+<div class="panel" style="padding:1.2rem 1.5rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.6rem;">
+        <p style="margin:0;font-weight:700;">Implementation Progress</p>
+        <p style="margin:0;font-weight:800;font-size:1.1rem;color:var(--c-teal-500);">@Progress.ToString("0.##")%</p>
+    </div>
+    <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width:@Progress%;"></div>
+    </div>
+</div>
+
+<!-- Steps -->
+<div class="cards-grid">
+    @foreach (var step in Steps)
+    {
+        var canToggle = CanToggle(step);
+        var cardStyle = step.Completed ? "border-color:rgba(16,185,129,0.4);" : canToggle ? "" : "opacity:0.6;";
+        <article class="dashboard-card" style="@cardStyle">
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.7rem;">
+                <div class="kpi-icon" style="background:@(step.Completed ? "linear-gradient(135deg,#10b981,#059669)" : canToggle ? "linear-gradient(135deg,#0d9488,#0ea5e9)" : "rgba(148,163,184,0.25)");width:38px;height:38px;margin:0;">
+                    @((MarkupString)(step.Completed ? "&#9989;" : canToggle ? "&#9997;" : "&#128274;"))
+                </div>
+                @if (step.Required)
+                {
+                    <span class="badge badge-warn">Required</span>
+                }
+                else
+                {
+                    <span class="badge" style="background:rgba(14,165,233,0.1);color:var(--c-sky-500);">Optional</span>
+                }
+            </div>
+            <h3 style="font:700 0.98rem 'Sora',sans-serif;margin-bottom:0.4rem;">@step.Title</h3>
+            <p class="@(step.Completed ? "status-ok" : canToggle ? "status-warning" : "")" style="font-size:0.83rem;font-weight:600;margin-bottom:0.9rem;">
+                @(step.Completed ? "Completed" : canToggle ? "Ready to complete" : "Waiting on dependency")
+            </p>
+            <button disabled="@(!canToggle)" @onclick="() => Toggle(step.Id)" style="@(step.Completed ? "background:rgba(16,185,129,0.15);color:var(--c-green);cursor:default;" : "")">
+                @(step.Completed ? "\u2713 Done" : "Mark Complete")
+            </button>
+        </article>
+    }
+</div>
+
+<!-- Questionnaire Template -->
+<div class="panel">
+    <h3 class="section-title">&#128196; Implementation Questionnaire</h3>
+    <p style="color:var(--text-secondary);margin-bottom:1rem;">Live template managed by WrkPlan admins.</p>
+    @if (Template.Count == 0)
+    {
+        <p style="color:var(--text-muted);font-size:0.86rem;">Loading questionnaire...</p>
+    }
+    else
+    {
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0.55rem;">
+            @foreach (var (q, idx) in Template.Take(12).Select((q,i)=>(q,i+1)))
+            {
+                <div style="padding:0.75rem 0.9rem;border-radius:10px;background:rgba(148,163,184,0.07);border:1px solid var(--border);font-size:0.875rem;">
+                    <p style="margin:0 0 0.45rem;"><span style="font-weight:700;color:var(--c-teal-500);">@idx.</span> @q</p>
+                    @if (Session.Auth?.Role == "CustomerAdmin")
+                    {
+                        <textarea @bind="Answers[q]" placeholder="Type your response" rows="3" style="width:100%;resize:vertical;"></textarea>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (Session.Auth?.Role == "CustomerAdmin")
+        {
+            <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.85rem;">
+                <button @onclick="SubmitResponsesAsync" disabled="@SavingResponses" style="padding:0.55rem 1rem;">
+                    @(SavingResponses ? "Saving..." : "Save Questionnaire")
+                </button>
+                @if (!string.IsNullOrWhiteSpace(ResponseError))
+                {
+                    <span class="status-overdue" style="font-size:0.82rem;">@ResponseError</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(ResponseSuccess))
+                {
+                    <span class="status-ok" style="font-size:0.82rem;">@ResponseSuccess</span>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private decimal Progress { get; set; }
+    private List<string> Template { get; set; } = [];
+    private Dictionary<string, string> Answers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    private bool SavingResponses { get; set; }
+    private string ResponseError { get; set; } = string.Empty;
+    private string ResponseSuccess { get; set; } = string.Empty;
+    private readonly List<StepVm> Steps =
+    [
+        new(Guid.NewGuid(), "Initial account setup", true, true, null),
+        new(Guid.NewGuid(), "Implementation questionnaire", true, false, null),
+        new(Guid.NewGuid(), "Required docs", true, false, null),
+        new(Guid.NewGuid(), "Execution + payment checkpoints", true, false, null)
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role is not ("CustomerAdmin" or "WrkPlanAdmin"))
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+
+        Template = (await Api.GetQuestionnaireTemplateAsync())?.Data ?? [];
+        Answers = Template.ToDictionary(x => x, _ => string.Empty, StringComparer.OrdinalIgnoreCase);
+        await RecalculateProgressAsync();
+        StateHasChanged();
+    }
+
+    private bool CanToggle(StepVm step)
+    {
+        if (step.Completed)
+        {
+            return false;
+        }
+
+        return step.Dependency is null || Steps.Any(s => s.Id == step.Dependency && s.Completed);
+    }
+
+    private async Task Toggle(Guid id)
+    {
+        var idx = Steps.FindIndex(x => x.Id == id);
+        if (idx >= 0)
+        {
+            Steps[idx] = Steps[idx] with { Completed = true };
+            await RecalculateProgressAsync();
+        }
+    }
+
+    private async Task RecalculateProgressAsync()
+    {
+        var payload = Steps.Select(s => new OnboardingStepDto(s.Id, s.Title, s.Required, s.Completed, s.Dependency)).ToList();
+        Progress = (await Api.GetOnboardingProgressAsync(payload))?.Data ?? 0m;
+    }
+
+    private async Task SubmitResponsesAsync()
+    {
+        ResponseError = string.Empty;
+        ResponseSuccess = string.Empty;
+
+        var answers = Answers
+            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+            .Select(x => new QuestionnaireAnswerDto(x.Key, x.Value.Trim()))
+            .ToList();
+
+        if (answers.Count == 0)
+        {
+            ResponseError = "Please answer at least one question before saving.";
+            return;
+        }
+
+        SavingResponses = true;
+        var result = await Api.SaveQuestionnaireResponsesAsync(new SubmitQuestionnaireResponseDto(answers));
+        if (result?.Success == true)
+        {
+            ResponseSuccess = "Questionnaire responses saved.";
+        }
+        else
+        {
+            ResponseError = result?.Error?.Message ?? "Failed to save questionnaire responses.";
+        }
+
+        SavingResponses = false;
+    }
+
+    private record StepVm(Guid Id, string Title, bool Required, bool Completed, Guid? Dependency);
+}

@@ -1,0 +1,43 @@
+@inject SessionService Session
+@inject NavigationManager Nav
+
+@if (_ready && Session.IsAuthenticated)
+{
+    @ChildContent
+}
+else if (!_ready)
+{
+    <div class="auth-guard-loading">
+        <div class="spinner-ring"></div>
+    </div>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? RequiredRole { get; set; }
+    [Parameter] public string RedirectTo { get; set; } = "/";
+
+    private bool _ready;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        _ready = true;
+
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo(RedirectTo, forceLoad: true);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(RequiredRole) &&
+            !string.Equals(Session.Auth?.Role, RequiredRole, StringComparison.OrdinalIgnoreCase))
+        {
+            Nav.NavigateTo(RedirectTo, forceLoad: true);
+            return;
+        }
+
+        StateHasChanged();
+    }
+}

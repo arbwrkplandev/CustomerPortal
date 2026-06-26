@@ -1,0 +1,241 @@
+.sp-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.sp-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(14,165,233,0.18);
+    border-top-color: #0ea5e9;
+    border-radius: 50%;
+    animation: sp-spin 0.75s linear infinite;
+}
+
+@keyframes sp-spin { to { transform: rotate(360deg); } }
+
+/* Tabs */
+.sp-tabs {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--bg-glass);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0.3rem;
+    margin-bottom: 1.2rem;
+    width: fit-content;
+    flex-wrap: wrap;
+}
+
+.sp-tab {
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 10px;
+    padding: 0.5rem 1.1rem;
+    font: 600 0.85rem "Manrope", sans-serif;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    box-shadow: none;
+}
+
+.sp-tab:hover { background: rgba(14,165,233,0.1); color: var(--text-primary); }
+.sp-tab.active { background: var(--gradient-brand); color: #fff; box-shadow: 0 4px 12px rgba(13,148,136,0.3); }
+
+/* Header row */
+.sp-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+/* Plan cards */
+.sp-plan-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: transform 0.28s ease, box-shadow 0.28s ease;
+}
+
+.sp-inactive { opacity: 0.6; filter: grayscale(30%); }
+
+.sp-plan-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.sp-plan-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.6rem;
+    border-radius: 99px;
+    font: 700 0.68rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.06rem;
+}
+
+.badge-ok { background: rgba(16,185,129,0.12); color: var(--c-green); }
+.badge-error { background: rgba(239,68,68,0.12); color: var(--c-red); }
+
+.sp-plan-cycle { font-size: 0.78rem; }
+
+.sp-plan-name {
+    font: 700 1.15rem "Sora", sans-serif;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.sp-plan-price {
+    font: 800 1.6rem "Sora", sans-serif;
+    color: var(--c-teal-500);
+    margin: 0;
+}
+
+.sp-plan-price span {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.sp-plan-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin: 0;
+    flex: 1;
+}
+
+.sp-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.83rem;
+    color: var(--text-secondary);
+}
+
+.sp-plan-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Error/success banners */
+.sp-error-banner {
+    padding: 0.6rem 1rem;
+    border-radius: 10px;
+    background: rgba(239,68,68,0.1);
+    color: var(--c-red);
+    border: 1px solid rgba(239,68,68,0.25);
+    font-size: 0.85rem;
+}
+
+.sp-success-banner {
+    padding: 0.6rem 1rem;
+    border-radius: 10px;
+    background: rgba(16,185,129,0.1);
+    color: var(--c-green);
+    border: 1px solid rgba(16,185,129,0.25);
+    font-size: 0.85rem;
+}
+
+/* Assign form */
+.sp-assign-panel {}
+
+.sp-assign-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.sp-label {
+    display: block;
+    font: 600 0.75rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.07rem;
+    color: var(--text-muted);
+    margin-bottom: 0.3rem;
+}
+
+/* Change log table */
+.sp-log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}
+
+.sp-log-table thead tr {
+    border-bottom: 1px solid var(--border);
+    background: rgba(148,163,184,0.06);
+}
+
+.sp-log-table th {
+    padding: 0.75rem 1.2rem;
+    text-align: left;
+    font: 700 0.72rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.07rem;
+    color: var(--text-muted);
+}
+
+.sp-log-table tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+}
+
+.sp-log-table tbody tr:hover { background: rgba(14,165,233,0.04); }
+
+.sp-log-table td { padding: 0.85rem 1.2rem; }
+
+/* Modal */
+.sp-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    backdrop-filter: blur(4px);
+    animation: sp-overlay-in 0.18s ease;
+}
+
+@keyframes sp-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+
+.sp-modal {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
+    padding: 2rem;
+    width: min(520px, 92vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+    animation: sp-modal-in 0.22s cubic-bezier(.23,1,.32,1);
+}
+
+@keyframes sp-modal-in {
+    from { opacity: 0; transform: translateY(20px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.sp-modal h3 {
+    font: 700 1.15rem "Sora", sans-serif;
+    margin: 0 0 1.2rem;
+    color: var(--text-primary);
+}
+
+.sp-modal textarea {
+    resize: vertical;
+    min-height: 90px;
+}

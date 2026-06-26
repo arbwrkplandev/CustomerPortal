@@ -1,0 +1,131 @@
+@page "/customerportal/theme"
+@inject ThemeStateService Theme
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#127912; Theme Settings</h2>
+    <p>Customize your portal's look with dark mode and RGB accent colors.</p>
+</div>
+
+<div class="cards-grid">
+    <!-- Controls -->
+    <article class="dashboard-card" style="grid-column:span 2;">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:1.2rem;">&#127775; Appearance Controls</h3>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1rem;border-radius:12px;background:rgba(148,163,184,0.07);border:1px solid var(--border);margin-bottom:1rem;">
+            <div>
+                <p style="margin:0;font-weight:700;">Dark Mode</p>
+                <p style="margin:0;color:var(--text-muted);font-size:0.83rem;">@(IsDark ? "Currently dark" : "Currently light")</p>
+            </div>
+            <button @onclick="ToggleDark" style="background:@(IsDark ? "linear-gradient(135deg,#4f46e5,#0ea5e9)" : "linear-gradient(135deg,#f59e0b,#ef4444)");padding:0.5rem 1.2rem;border-radius:99px;">
+                @(IsDark ? "&#9728;&#65039; Light" : "&#127769; Dark")
+            </button>
+        </div>
+
+        <div class="field-row" style="margin-bottom:1.2rem;">
+            <div>
+                <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.35rem;">Red (0–255)</label>
+                <input type="range" min="0" max="255" @bind="R" @bind:event="oninput" style="width:100%;accent-color:rgb(239,68,68);" />
+                <p style="margin:0.2rem 0 0;font-weight:700;color:rgb(239,68,68);font-size:0.9rem;">@R</p>
+            </div>
+            <div>
+                <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.35rem;">Green (0–255)</label>
+                <input type="range" min="0" max="255" @bind="G" @bind:event="oninput" style="width:100%;accent-color:rgb(16,185,129);" />
+                <p style="margin:0.2rem 0 0;font-weight:700;color:rgb(16,185,129);font-size:0.9rem;">@G</p>
+            </div>
+            <div>
+                <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.35rem;">Blue (0–255)</label>
+                <input type="range" min="0" max="255" @bind="B" @bind:event="oninput" style="width:100%;accent-color:rgb(14,165,233);" />
+                <p style="margin:0.2rem 0 0;font-weight:700;color:rgb(14,165,233);font-size:0.9rem;">@B</p>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+            <button @onclick="Save">&#128190; Save Theme</button>
+            <button @onclick="Reset" class="btn-secondary">&#8635; Reset Default</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Status))
+        {
+            <div class="auth-status @(Status.Contains("failed") || Status.Contains("error") ? "error" : "success")" style="margin-top:0.9rem;">
+                @Status
+            </div>
+        }
+    </article>
+
+    <!-- Live Preview -->
+    <article class="dashboard-card">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">&#128065; Live Preview</h3>
+        <div style="height:120px;border-radius:14px;background:linear-gradient(140deg,rgb(@R,@G,@B),rgba(@R,@G,@B,0.4));display:flex;align-items:center;justify-content:center;margin-bottom:0.8rem;border:1px solid rgba(@R,@G,@B,0.5);">
+            <p style="margin:0;font-weight:700;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,0.4);font-size:1rem;">rgb(@R, @G, @B)</p>
+        </div>
+        <div style="display:flex;gap:0.5rem;">
+            <div style="flex:1;height:36px;border-radius:8px;background:rgb(@R,@G,@B);"></div>
+            <div style="flex:1;height:36px;border-radius:8px;background:rgba(@R,@G,@B,0.6);"></div>
+            <div style="flex:1;height:36px;border-radius:8px;background:rgba(@R,@G,@B,0.3);"></div>
+        </div>
+        <p style="margin-top:0.6rem;font-size:0.78rem;color:var(--text-muted);">Full, 60%, 30% opacity swatches</p>
+    </article>
+</div>
+
+@code {
+    private int R;
+    private int G;
+    private int B;
+    private bool IsDark;
+    private string Status { get; set; } = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+
+        var remote = await Api.GetThemeAsync();
+        var source = remote?.Data ?? Theme.Current;
+
+        R = source.BackgroundR;
+        G = source.BackgroundG;
+        B = source.BackgroundB;
+        IsDark = source.IsDarkMode;
+        StateHasChanged();
+    }
+
+    private void ToggleDark() => IsDark = !IsDark;
+
+    private async Task Save()
+    {
+        var request = new ThemePreferenceDto(IsDark, Math.Clamp(R, 0, 255), Math.Clamp(G, 0, 255), Math.Clamp(B, 0, 255));
+        var remote = await Api.SaveThemeAsync(request);
+        if (remote?.Success == true && remote.Data is not null)
+        {
+            await Theme.SetAsync(remote.Data);
+            Status = "\u2713 Theme saved and applied.";
+            return;
+        }
+
+        Status = remote?.Error?.Message ?? "Theme save failed.";
+    }
+
+    private async Task Reset()
+    {
+        await Api.ResetThemeAsync();
+        await Theme.ResetAsync();
+        R = Theme.Current.BackgroundR;
+        G = Theme.Current.BackgroundG;
+        B = Theme.Current.BackgroundB;
+        IsDark = Theme.Current.IsDarkMode;
+        Status = "\u2713 Theme reset to default.";
+    }
+}

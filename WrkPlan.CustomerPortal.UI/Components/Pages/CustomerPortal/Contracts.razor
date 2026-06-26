@@ -1,0 +1,378 @@
+@page "/customerportal/contracts"
+@using Microsoft.AspNetCore.Components.Forms
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h2>Contracts Center</h2>
+    <p>Review contract versions, sign digitally, or upload manually signed copies.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="ticket-loading"><div class="ticket-spinner"></div></div>
+}
+else
+{
+    <div class="cards-grid">
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.8rem;">My Contracts</h3>
+            @if (!string.IsNullOrWhiteSpace(_loadError))
+            {
+                <div class="auth-status error" style="margin-bottom:0.7rem;">@_loadError</div>
+            }
+            @if (_contracts.Count == 0)
+            {
+                <p style="color:var(--text-muted);margin:0;">No contracts available.</p>
+            }
+            else
+            {
+                <ul class="data-list">
+                    @foreach (var contract in _contracts)
+                    {
+                        <li style="cursor:pointer;" @onclick="() => SelectContractAsync(contract.Id)">
+                            <span class="list-label">@contract.ContractNumber - @contract.Title (@contract.Version)</span>
+                            <span style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+                                <span class="tag">@contract.Status</span>
+                                @if (_selectedContractId == contract.Id)
+                                {
+                                    <span class="badge badge-ok">Selected</span>
+                                }
+                            </span>
+                        </li>
+                    }
+                </ul>
+            }
+        </article>
+
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.8rem;">Contract Detail</h3>
+            @if (_selected is null)
+            {
+                <p style="color:var(--text-muted);margin:0;">Select a contract to view details and actions.</p>
+            }
+            else
+            {
+                <div class="field-row" style="grid-template-columns:repeat(auto-fit,minmax(210px,1fr));">
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Contract Number</div>
+                        <div style="font-weight:700;">@_selected.ContractNumber</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Status</div>
+                        <div style="font-weight:700;">@_selected.Status</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Effective</div>
+                        <div style="font-weight:700;">@_selected.EffectiveUtc.ToString("dd MMM yyyy")</div>
+                    </div>
+                    <div class="panel" style="padding:0.6rem 0.8rem;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05rem;">Expiry</div>
+                        <div style="font-weight:700;">@_selected.ExpiryUtc.ToString("dd MMM yyyy")</div>
+                    </div>
+                </div>
+
+                <div style="margin-top:0.8rem;">
+                    <h4 style="margin:0 0 0.4rem;">Versions</h4>
+                    @if (_selected.Versions.Count == 0)
+                    {
+                        <p style="color:var(--text-muted);margin:0;">No document versions available.</p>
+                    }
+                    else
+                    {
+                        <ul class="data-list">
+                            @foreach (var version in _selected.Versions)
+                            {
+                                <li>
+                                    <span class="list-label">@version.FileName (@version.DocumentType)</span>
+                                    <span style="display:flex;gap:0.4rem;align-items:center;">
+                                        @if (version.IsSigned)
+                                        {
+                                            <span class="badge badge-ok">Signed</span>
+                                        }
+                                        @if (version.IsLatest)
+                                        {
+                                            <span class="tag">Latest</span>
+                                        }
+                                        <button class="ghost-btn" style="padding:0.3rem 0.65rem;font-size:0.8rem;" @onclick="() => DownloadDocumentAsync(version.Id)">Download</button>
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+
+                <div style="margin-top:0.9rem;">
+                    <h4 style="margin:0 0 0.4rem;">Signature Actions</h4>
+
+                    <div class="panel" style="padding:0.8rem;margin-bottom:0.8rem;">
+                        <div style="font-weight:700;margin-bottom:0.4rem;">Upload Manually Signed Contract</div>
+                        <InputFile OnChange="OnManualSignedFileSelected" accept="application/pdf" />
+                        <input @bind="_manualSignedNotes" placeholder="Optional notes" style="margin-top:0.55rem;" />
+                        <button style="margin-top:0.55rem;" @onclick="UploadManualSignedAsync" disabled="@_manualSignedUploading">@(_manualSignedUploading ? "Uploading..." : "Upload Signed PDF")</button>
+                    </div>
+
+                    <div class="panel" style="padding:0.8rem;">
+                        <div style="font-weight:700;margin-bottom:0.4rem;">Digital Signature in Portal</div>
+                        <InputFile OnChange="OnSignatureFileSelected" accept="image/png,image/jpeg" />
+                        <div class="field-row" style="grid-template-columns:1fr 1fr;margin-top:0.55rem;">
+                            <input type="number" min="0" max="100" step="0.1" @bind="_sigX" placeholder="X position (%)" />
+                            <input type="number" min="0" max="100" step="0.1" @bind="_sigY" placeholder="Y position (%)" />
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.55rem;">
+                            <button class="ghost-btn" @onclick="PreviewDigitalSignatureAsync" disabled="@_digitalBusy">Preview</button>
+                            <button @onclick="ConfirmDigitalSignatureAsync" disabled="@_digitalBusy">@(_digitalBusy ? "Submitting..." : "Confirm Signature")</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top:0.8rem;">
+                    <h4 style="margin:0 0 0.4rem;">Status Timeline</h4>
+                    @if (_selected.History.Count == 0)
+                    {
+                        <p style="color:var(--text-muted);margin:0;">No status events available.</p>
+                    }
+                    else
+                    {
+                        <ul class="data-list">
+                            @foreach (var h in _selected.History.Take(8))
+                            {
+                                <li>
+                                    <span class="list-label">@h.ToStatus • @h.Action</span>
+                                    <span class="tag">@h.CreatedUtc.ToString("dd MMM yyyy HH:mm")</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_actionError))
+            {
+                <div class="auth-status error" style="margin-top:0.75rem;">@_actionError</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(_actionSuccess))
+            {
+                <div class="auth-status success" style="margin-top:0.75rem;">@_actionSuccess</div>
+            }
+        </article>
+    </div>
+}
+
+@code {
+    private bool _ready;
+    private string? _loadError;
+    private string? _actionError;
+    private string? _actionSuccess;
+    private List<ContractSummaryDto> _contracts = [];
+    private ContractDetailDto? _selected;
+    private Guid? _selectedContractId;
+
+    private string? _manualSignedFileBase64;
+    private string _manualSignedFileName = "signed-contract.pdf";
+    private string _manualSignedContentType = "application/pdf";
+    private string? _manualSignedNotes;
+    private bool _manualSignedUploading;
+
+    private string? _signatureBase64;
+    private string _signatureFileName = "signature.png";
+    private string _signatureContentType = "image/png";
+    private decimal _sigX = 50;
+    private decimal _sigY = 80;
+    private bool _digitalBusy;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+
+        await LoadContractsAsync();
+    }
+
+    private async Task LoadContractsAsync()
+    {
+        _loadError = null;
+        var response = await Api.GetContractsAsync();
+        if (response?.Success != true || response.Data is null)
+        {
+            _loadError = response?.Error?.Message ?? "Failed to load contracts.";
+            _ready = true;
+            StateHasChanged();
+            return;
+        }
+
+        _contracts = response.Data.OrderByDescending(x => x.EffectiveUtc).ToList();
+        if (_contracts.Count > 0)
+        {
+            await SelectContractAsync(_contracts[0].Id);
+        }
+
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task SelectContractAsync(Guid id)
+    {
+        _selectedContractId = id;
+        var detail = await Api.GetContractDetailAsync(id);
+        if (detail?.Success == true && detail.Data is not null)
+        {
+            _selected = detail.Data;
+        }
+        else
+        {
+            _actionError = detail?.Error?.Message ?? "Unable to load contract detail.";
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task DownloadDocumentAsync(Guid documentId)
+    {
+        _actionError = _actionSuccess = null;
+        var file = await Api.DownloadContractDocumentAsync(documentId);
+        if (file is null)
+        {
+            _actionError = "Failed to download contract document.";
+            return;
+        }
+
+        await JS.InvokeVoidAsync("wrkplan.downloadFileFromBytes", file.Value.FileName, file.Value.ContentType, Convert.ToBase64String(file.Value.Bytes));
+    }
+
+    private async Task OnManualSignedFileSelected(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null) return;
+
+        _manualSignedFileName = file.Name;
+        _manualSignedContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/pdf" : file.ContentType;
+        using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _manualSignedFileBase64 = Convert.ToBase64String(ms.ToArray());
+    }
+
+    private async Task UploadManualSignedAsync()
+    {
+        _actionError = _actionSuccess = null;
+        if (_selectedContractId is null)
+        {
+            _actionError = "Select a contract first.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_manualSignedFileBase64))
+        {
+            _actionError = "Please choose a signed PDF file.";
+            return;
+        }
+
+        _manualSignedUploading = true;
+        try
+        {
+            var response = await Api.UploadCustomerSignedManualContractAsync(new UploadSignedContractDto(
+                _selectedContractId.Value,
+                _manualSignedFileName,
+                _manualSignedContentType,
+                _manualSignedFileBase64,
+                _manualSignedNotes));
+
+            if (response?.Success == true)
+            {
+                _actionSuccess = "Manually signed contract uploaded.";
+                await LoadContractsAsync();
+            }
+            else
+            {
+                _actionError = response?.Error?.Message ?? "Upload failed.";
+            }
+        }
+        finally
+        {
+            _manualSignedUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSignatureFileSelected(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null) return;
+
+        _signatureFileName = file.Name;
+        _signatureContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
+        using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _signatureBase64 = Convert.ToBase64String(ms.ToArray());
+    }
+
+    private async Task PreviewDigitalSignatureAsync()
+    {
+        await SendDigitalSignatureAsync(confirm: false);
+    }
+
+    private async Task ConfirmDigitalSignatureAsync()
+    {
+        await SendDigitalSignatureAsync(confirm: true);
+    }
+
+    private async Task SendDigitalSignatureAsync(bool confirm)
+    {
+        _actionError = _actionSuccess = null;
+        if (_selectedContractId is null)
+        {
+            _actionError = "Select a contract first.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_signatureBase64))
+        {
+            _actionError = "Upload a signature image first.";
+            return;
+        }
+
+        _digitalBusy = true;
+        try
+        {
+            var response = await Api.ApplyCustomerDigitalSignatureAsync(new CustomerApplySignatureDto(
+                _selectedContractId.Value,
+                _signatureFileName,
+                _signatureContentType,
+                _signatureBase64,
+                _sigX,
+                _sigY,
+                confirm));
+
+            if (response?.Success == true)
+            {
+                _actionSuccess = confirm ? "Digital signature confirmed." : "Signature preview prepared.";
+                if (confirm)
+                {
+                    await LoadContractsAsync();
+                }
+            }
+            else
+            {
+                _actionError = response?.Error?.Message ?? "Digital signature action failed.";
+            }
+        }
+        finally
+        {
+            _digitalBusy = false;
+            StateHasChanged();
+        }
+    }
+}

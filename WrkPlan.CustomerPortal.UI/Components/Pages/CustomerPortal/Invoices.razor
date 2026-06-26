@@ -1,0 +1,334 @@
+@page "/customerportal/invoices"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h2>&#128181; Invoices</h2>
+    <p>Billing history and invoice details for <strong>@Session.TenantKey</strong></p>
+</div>
+
+@if (!_ready)
+{
+    <div class="inv-loading"><div class="inv-spinner"></div></div>
+}
+else if (_error is not null)
+{
+    <article class="dashboard-card inv-error">
+        <p style="font-size:1.8rem;margin-bottom:0.5rem;">&#9888;</p>
+        <h3>Failed to load invoices</h3>
+        <p>@_error</p>
+        <button class="btn-hero secondary" style="margin-top:1rem;" @onclick="LoadAsync">&#8635; Retry</button>
+    </article>
+}
+else if (_detail is not null)
+{
+    <!-- Invoice Detail View -->
+    <div class="inv-detail-header">
+        <button class="ghost-btn" @onclick="() => _detail = null">&#8592; Back to list</button>
+        <h3>Invoice @_detail.InvoiceNumber</h3>
+        <span class="badge @BadgeClass(_detail.Status)">@_detail.Status</span>
+    </div>
+
+    <div class="cards-grid inv-detail-grid">
+        <!-- Left: line items -->
+        <article class="dashboard-card inv-card-lines" style="grid-column:span 2;">
+            <div class="inv-meta-row">
+                <div class="inv-meta-item">
+                    <p class="inv-meta-label">Plan</p>
+                    <p class="inv-meta-value">@_detail.PlanName</p>
+                </div>
+                <div class="inv-meta-item">
+                    <p class="inv-meta-label">Billing Cycle</p>
+                    <p class="inv-meta-value">@_detail.BillingCycle</p>
+                </div>
+                <div class="inv-meta-item">
+                    <p class="inv-meta-label">Due Date</p>
+                    <p class="inv-meta-value">@_detail.DueUtc.ToString("MMM dd, yyyy")</p>
+                </div>
+                @if (_detail.PaidUtc.HasValue)
+                {
+                    <div class="inv-meta-item">
+                        <p class="inv-meta-label">Paid On</p>
+                        <p class="inv-meta-value" style="color:var(--c-green);">@_detail.PaidUtc.Value.ToString("MMM dd, yyyy")</p>
+                    </div>
+                }
+            </div>
+
+            <div class="inv-line-table">
+                <div class="inv-line-head">
+                    <span>Description</span>
+                    <span>Amount</span>
+                </div>
+                @foreach (var line in _detail.Lines)
+                {
+                    <div class="inv-line-row">
+                        <span>@line.Description</span>
+                        <span>@line.Amount.ToString("C")</span>
+                    </div>
+                }
+                @if (_detail.Discounts > 0)
+                {
+                    <div class="inv-line-row inv-discount">
+                        <span>Discount</span>
+                        <span>-@_detail.Discounts.ToString("C")</span>
+                    </div>
+                }
+                @if (_detail.Taxes > 0)
+                {
+                    <div class="inv-line-row">
+                        <span>Taxes &amp; Fees</span>
+                        <span>@_detail.Taxes.ToString("C")</span>
+                    </div>
+                }
+                <div class="inv-line-total">
+                    <span>Total</span>
+                    <span>@_detail.Total.ToString("C")</span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_detail.ProviderRef))
+            {
+                <p class="inv-ref">Payment ref: <code>@_detail.ProviderRef</code></p>
+            }
+
+            <div style="margin-top:1.2rem;display:flex;gap:0.75rem;flex-wrap:wrap;">
+                <button class="btn-hero" @onclick="() => DownloadPdf(_detail.InvoiceNumber)">&#128229; Download PDF</button>
+                <button class="ghost-btn" @onclick="() => _detail = null">&#8592; Back</button>
+            </div>
+        </article>
+
+        <!-- Right: status card -->
+        <article class="dashboard-card inv-status-card">
+            <div class="inv-status-icon @BadgeClass(_detail.Status)">
+                @((MarkupString)(StatusIcon(_detail.Status)))
+            </div>
+            <h4>@_detail.Status</h4>
+            <p class="inv-status-amount">@_detail.Total.ToString("C")</p>
+            @if (_detail.Status == "Overdue")
+            {
+                <p style="color:var(--c-red);font-size:0.85rem;margin-top:0.5rem;">Past due @_detail.DueUtc.ToString("MMM dd")</p>
+            }
+        </article>
+    </div>
+}
+else
+{
+    <!-- Invoice List View -->
+    <div class="panel" style="padding:0.85rem 1rem;margin-bottom:0.9rem;display:flex;gap:0.65rem;align-items:center;flex-wrap:wrap;">
+        <input value="@_search" @onchange="SearchAsync" placeholder="Search invoices by number or status" style="max-width:280px;" />
+        <select value="@_pageSize" @onchange="ApplyPageSizeAsync" style="max-width:120px;">
+            <option value="10">10 / page</option>
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+        </select>
+        <span class="tag">Showing @RangeStart-@RangeEnd of @_totalCount</span>
+    </div>
+
+    @if (_loading)
+    {
+        <article class="dashboard-card inv-error">
+            <p style="color:var(--text-muted);">Loading invoices...</p>
+        </article>
+    }
+    else if (_invoices.Count == 0)
+    {
+        <article class="dashboard-card" style="text-align:center;padding:3rem;">
+            <p style="font-size:2rem;margin-bottom:0.5rem;">&#128196;</p>
+            <h3>No Invoices</h3>
+            <p style="color:var(--text-muted);">No invoices found for your account.</p>
+        </article>
+    }
+    else
+    {
+        <div class="panel" style="padding:0;overflow:hidden;">
+            <div style="overflow-x:auto;">
+                <table class="inv-table">
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Amount</th>
+                            <th>Due Date</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var inv in _invoices)
+                        {
+                            <tr class="@(inv.Status == "Overdue" ? "inv-row-overdue" : "")">
+                                <td class="inv-num">@inv.InvoiceNumber</td>
+                                <td style="font-weight:700;">@inv.Total.ToString("C")</td>
+                                <td style="color:var(--text-muted);font-size:0.85rem;">@inv.DueUtc.ToString("MMM dd, yyyy")</td>
+                                <td><span class="badge @BadgeClass(inv.Status)">@inv.Status</span></td>
+                                <td>
+                                    <div style="display:flex;gap:0.45rem;flex-wrap:wrap;justify-content:flex-end;">
+                                        <button class="ghost-btn" style="padding:0.3rem 0.75rem;font-size:0.8rem;" @onclick="() => ShowDetail(inv.InvoiceNumber)">
+                                            View &#8250;
+                                        </button>
+                                        <button class="ghost-btn" style="padding:0.3rem 0.75rem;font-size:0.8rem;" @onclick="() => DownloadPdf(inv.InvoiceNumber)">
+                                            Download
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel" style="padding:0.75rem 1rem;display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <span style="font-size:0.84rem;color:var(--text-muted);">Page @_pageNumber of @_totalPages</span>
+            <div style="display:flex;gap:0.45rem;align-items:center;flex-wrap:wrap;">
+                <button class="ghost-btn" style="padding:0.35rem 0.7rem;font-size:0.8rem;" @onclick="() => GoToPageAsync(_pageNumber - 1)" disabled="@(_pageNumber <= 1)">Previous</button>
+                @for (var p = Math.Max(1, _pageNumber - 2); p <= Math.Min(_totalPages, _pageNumber + 2); p++)
+                {
+                    var local = p;
+                    <button class="ghost-btn" style="padding:0.35rem 0.62rem;font-size:0.8rem;@(local == _pageNumber ? "border-color:rgba(14,165,233,0.5);color:var(--c-sky-500);font-weight:700;" : "")" @onclick="() => GoToPageAsync(local)">@local</button>
+                }
+                <button class="ghost-btn" style="padding:0.35rem 0.7rem;font-size:0.8rem;" @onclick="() => GoToPageAsync(_pageNumber + 1)" disabled="@(_pageNumber >= _totalPages)">Next</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<InvoiceSummaryDto> _invoices = [];
+    private InvoiceDetailDto? _detail;
+    private string? _error;
+    private bool _ready;
+    private bool _loading;
+    private int _pageNumber = 1;
+    private int _pageSize = 10;
+    private int _totalCount;
+    private int _totalPages = 1;
+    private string _search = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetInvoicesPagedAsync(_pageNumber, _pageSize, "createdUtc", "desc", string.IsNullOrWhiteSpace(_search) ? null : _search);
+            _invoices = result?.Data?.Items?.ToList() ?? [];
+            _totalCount = result?.Data?.TotalCount ?? 0;
+            _totalPages = Math.Max(1, result?.Data?.TotalPages ?? 1);
+            if (result?.Success == false)
+                _error = result.Error?.Message ?? "Failed to load invoices.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        var next = Math.Clamp(page, 1, _totalPages);
+        if (next == _pageNumber) return;
+        _pageNumber = next;
+        await LoadAsync();
+    }
+
+    private async Task ApplyPageSizeAsync(ChangeEventArgs args)
+    {
+        if (args.Value is null || !int.TryParse(args.Value.ToString(), out var parsed)) return;
+        _pageSize = parsed;
+        _pageNumber = 1;
+        await LoadAsync();
+    }
+
+    private async Task SearchAsync(ChangeEventArgs args)
+    {
+        _search = args.Value?.ToString() ?? string.Empty;
+        _pageNumber = 1;
+        await LoadAsync();
+    }
+
+    private int RangeStart => _totalCount == 0 ? 0 : ((_pageNumber - 1) * _pageSize) + 1;
+    private int RangeEnd => Math.Min(_pageNumber * _pageSize, _totalCount);
+
+    private async Task ShowDetail(string invoiceNumber)
+    {
+        _error = null;
+        _detail = null;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetInvoiceDetailAsync(invoiceNumber);
+            if (result?.Success == true && result.Data is not null)
+            {
+                _detail = result.Data;
+            }
+            else
+            {
+                _error = result?.Error?.Message ?? "Unable to load invoice details.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    private async Task DownloadPdf(string invoiceNumber)
+    {
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var pdf = await Api.DownloadInvoicePdfAsync(invoiceNumber);
+            if (pdf is null || pdf.Value.Bytes.Length == 0)
+            {
+                _error = "Failed to download invoice PDF.";
+                StateHasChanged();
+                return;
+            }
+
+            await JS.InvokeVoidAsync("wrkplan.downloadFileFromBytes", pdf.Value.FileName, pdf.Value.ContentType, Convert.ToBase64String(pdf.Value.Bytes));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            StateHasChanged();
+        }
+    }
+
+    private static string BadgeClass(string status) => status switch
+    {
+        "Overdue" => "badge-error",
+        "Active" or "Paid" => "badge-ok",
+        _ => "badge-warn"
+    };
+
+    private static string StatusIcon(string status) => status switch
+    {
+        "Overdue" => "&#9888;",
+        "Active" => "&#128200;",
+        "Paid" => "&#9989;",
+        _ => "&#8987;"
+    };
+}

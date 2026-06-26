@@ -1,0 +1,62 @@
+@page "/customerportal/account"
+@page "/customerportal/resources"
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>@Title</h2>
+    <p>@Subtitle</p>
+</div>
+
+<article class="panel" style="padding:1.1rem;">
+    @if (RouteKey == "account")
+    {
+        <h3 style="margin-top:0;">Account Overview</h3>
+        <p style="margin-bottom:0.7rem;color:var(--text-secondary);">Tenant: <strong>@Session.TenantKey</strong></p>
+        <p style="margin:0;color:var(--text-secondary);">Role: <strong>@Session.Auth?.Role</strong></p>
+    }
+    else
+    {
+        <h3 style="margin-top:0;">Resources Library</h3>
+        <p style="margin:0;color:var(--text-secondary);">Find product guidance, onboarding docs, and customer success materials curated for your tenant.</p>
+    }
+</article>
+
+@code {
+    private string Title = "Customer Page";
+    private string Subtitle = "";
+    private string RouteKey = "account";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "CustomerAdmin")
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+
+        var path = Nav.ToBaseRelativePath(Nav.Uri).ToLowerInvariant();
+        if (path.StartsWith("customerportal/resources"))
+        {
+            RouteKey = "resources";
+            Title = "Resources";
+            Subtitle = "Documentation and learning resources for your team.";
+        }
+        else
+        {
+            RouteKey = "account";
+            Title = "Account Info";
+            Subtitle = "Tenant identity and account-level information.";
+        }
+
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,182 @@
+.sub-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 200px;
+}
+
+.sub-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(14,165,233,0.18);
+    border-top-color: #0ea5e9;
+    border-radius: 50%;
+    animation: sub-spin 0.75s linear infinite;
+}
+
+@keyframes sub-spin { to { transform: rotate(360deg); } }
+
+.sub-error {
+    text-align: center;
+    padding: 2.5rem;
+}
+
+/* Status banner */
+.sub-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1.2rem;
+    border-radius: 14px;
+    font: 600 0.9rem "Manrope", sans-serif;
+    margin-bottom: 1.2rem;
+    animation: slide-in-up 0.3s ease;
+}
+
+.sub-banner-ok    { background: rgba(16,185,129,0.1);  color: var(--c-green); border: 1px solid rgba(16,185,129,0.25); }
+.sub-banner-warn  { background: rgba(245,158,11,0.1);  color: var(--c-amber); border: 1px solid rgba(245,158,11,0.25); }
+.sub-banner-error { background: rgba(239,68,68,0.1);   color: var(--c-red);   border: 1px solid rgba(239,68,68,0.25); }
+
+/* Grid */
+.sub-grid {
+    grid-template-columns: 3fr 2fr;
+}
+
+@media (max-width: 900px) {
+    .sub-grid { grid-template-columns: 1fr; }
+}
+
+/* Plan card */
+.sub-plan-card {
+    position: relative;
+    overflow: hidden;
+}
+
+.sub-plan-card::before {
+    content: "";
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(13,148,136,0.18), transparent 70%);
+    pointer-events: none;
+}
+
+.sub-plan-badge {
+    margin-bottom: 0.5rem;
+}
+
+.sub-plan-name {
+    font: 800 1.8rem "Sora", sans-serif;
+    color: var(--text-primary);
+    margin: 0 0 0.35rem;
+}
+
+.sub-plan-desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0 0 1rem;
+}
+
+.sub-price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    margin-bottom: 1.4rem;
+}
+
+.sub-price {
+    font: 800 2.2rem "Sora", sans-serif;
+    color: var(--c-teal-500);
+}
+
+.sub-cycle {
+    font: 500 1rem "Manrope", sans-serif;
+    color: var(--text-muted);
+}
+
+/* Date grid */
+.sub-dates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+}
+
+.sub-date-label {
+    font: 600 0.72rem "Manrope", sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.07rem;
+    color: var(--text-muted);
+    margin: 0 0 0.2rem;
+}
+
+.sub-date-value {
+    font: 700 0.92rem "Sora", sans-serif;
+    color: var(--text-primary);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.sub-date-warn { color: var(--c-amber) !important; }
+
+.sub-days-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.45rem;
+    border-radius: 99px;
+    background: rgba(245,158,11,0.15);
+    color: var(--c-amber);
+    font: 700 0.72rem "Manrope", sans-serif;
+}
+
+/* Features card */
+.sub-features-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.sub-feat-title {
+    font: 700 1rem "Sora", sans-serif;
+    margin: 0 0 1rem;
+    color: var(--text-primary);
+}
+
+.sub-features-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    flex: 1;
+}
+
+.sub-feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    animation: slide-in-up 0.3s ease both;
+}
+
+.sub-feat-check {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(16,185,129,0.15);
+    color: var(--c-green);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+/* Action panel */
+.sub-action-panel {}

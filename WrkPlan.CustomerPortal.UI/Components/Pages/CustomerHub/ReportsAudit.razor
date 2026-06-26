@@ -1,0 +1,169 @@
+@page "/customerhub/reports"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page-header">
+    <h2>Reports And Audit</h2>
+    <p>Login, payment, announcement, support, and contract activity across tenants.</p>
+</div>
+
+@if (!_ready)
+{
+    <div class="ticket-loading"><div class="ticket-spinner"></div></div>
+}
+else
+{
+    <div class="cards-grid">
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.8rem;">Audit Filters</h3>
+            <div class="field-row" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));">
+                <input type="date" @bind="_fromDate" />
+                <input type="date" @bind="_toDate" />
+                <input @bind="_eventType" placeholder="Event type" />
+                <input @bind="_userFilter" placeholder="User" />
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem;">
+                <button @onclick="LoadAsync">Apply</button>
+                <button class="ghost-btn" @onclick="ExportCsvAsync">Export CSV</button>
+            </div>
+        </article>
+
+        <article class="dashboard-card" style="grid-column:span 2;">
+            <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.8rem;">Audit Events</h3>
+            @if (_rows.Count == 0)
+            {
+                <p style="color:var(--text-muted);">No audit rows for current filter.</p>
+            }
+            else
+            {
+                <ul class="data-list">
+                    @foreach (var row in _rows)
+                    {
+                        <li>
+                            <span class="list-label">@row.EventType • @row.Action • @row.EntityType</span>
+                            <span style="display:flex;gap:0.35rem;align-items:center;flex-wrap:wrap;">
+                                <span class="tag">@row.User</span>
+                                <span class="tag">@row.OccurredUtc.ToString("dd MMM yyyy HH:mm")</span>
+                            </span>
+                        </li>
+                    }
+                </ul>
+
+                <div style="margin-top:0.7rem;display:flex;justify-content:space-between;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                    <span style="font-size:0.84rem;color:var(--text-muted);">Page @_pageNumber of @_totalPages</span>
+                    <div style="display:flex;gap:0.45rem;">
+                        <button class="ghost-btn" @onclick="() => ChangePageAsync(_pageNumber - 1)" disabled="@(_pageNumber <= 1)">Previous</button>
+                        <button class="ghost-btn" @onclick="() => ChangePageAsync(_pageNumber + 1)" disabled="@(_pageNumber >= _totalPages)">Next</button>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <div class="auth-status error" style="margin-top:0.7rem;">@_error</div>
+            }
+        </article>
+    </div>
+}
+
+@code {
+    private bool _ready;
+    private string? _error;
+    private List<AuditReportItemDto> _rows = [];
+    private int _pageNumber = 1;
+    private int _pageSize = 25;
+    private int _totalPages = 1;
+
+    private DateTime _fromDate = DateTime.UtcNow.AddMonths(-1).Date;
+    private DateTime _toDate = DateTime.UtcNow.Date;
+    private string _eventType = string.Empty;
+    private string _userFilter = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", true);
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        DateTime? from = DateTime.SpecifyKind(_fromDate.Date, DateTimeKind.Utc);
+        DateTime? to = DateTime.SpecifyKind(_toDate.Date, DateTimeKind.Utc);
+
+        var response = await Api.GetAuditReportAsync(new AuditReportFilterDto(
+            PageNumber: _pageNumber,
+            PageSize: _pageSize,
+            FromUtc: from,
+            ToUtc: to,
+            TenantId: null,
+            EventType: string.IsNullOrWhiteSpace(_eventType) ? null : _eventType,
+            User: string.IsNullOrWhiteSpace(_userFilter) ? null : _userFilter,
+            SortBy: "occurredUtc",
+            SortOrder: "desc"));
+
+        if (response?.Success != true || response.Data is null)
+        {
+            _error = response?.Error?.Message ?? "Unable to load audit rows.";
+            _rows = [];
+            _totalPages = 1;
+        }
+        else
+        {
+            _rows = response.Data.Items.ToList();
+            _totalPages = response.Data.TotalPages;
+        }
+
+        _ready = true;
+        StateHasChanged();
+    }
+
+    private async Task ChangePageAsync(int page)
+    {
+        var next = Math.Clamp(page, 1, _totalPages);
+        if (next == _pageNumber) return;
+        _pageNumber = next;
+        await LoadAsync();
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        _error = null;
+        DateTime? from = DateTime.SpecifyKind(_fromDate.Date, DateTimeKind.Utc);
+        DateTime? to = DateTime.SpecifyKind(_toDate.Date, DateTimeKind.Utc);
+
+        var file = await Api.ExportAuditCsvAsync(new AuditReportFilterDto(
+            PageNumber: 1,
+            PageSize: 5000,
+            FromUtc: from,
+            ToUtc: to,
+            TenantId: null,
+            EventType: string.IsNullOrWhiteSpace(_eventType) ? null : _eventType,
+            User: string.IsNullOrWhiteSpace(_userFilter) ? null : _userFilter,
+            SortBy: "occurredUtc",
+            SortOrder: "desc"));
+
+        if (file is null)
+        {
+            _error = "Failed to export CSV.";
+            StateHasChanged();
+            return;
+        }
+
+        await JS.InvokeVoidAsync("wrkplan.downloadFileFromBytes", file.Value.FileName, file.Value.ContentType, Convert.ToBase64String(file.Value.Bytes));
+    }
+}

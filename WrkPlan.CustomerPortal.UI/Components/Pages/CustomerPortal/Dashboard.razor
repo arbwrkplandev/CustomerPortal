@@ -1,0 +1,190 @@
+@page "/customerportal/dashboard"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#127760; Customer Portal</h2>
+    <p>Welcome back &mdash; <strong>@Session.Auth?.Role</strong> on tenant <strong>@Session.TenantKey</strong></p>
+</div>
+
+<!-- KPI Cards -->
+@if (Cards.Count == 0 && IsLoading)
+{
+    <div class="cards-grid">
+        @for (int i = 0; i < 4; i++)
+        {
+            <article class="dashboard-card kpi-card" style="opacity:0.5;">
+                <div class="kpi-icon">&#8987;</div>
+                <p class="kpi-label">Loading...</p>
+                <p class="kpi-value">&#x2014;</p>
+            </article>
+        }
+    </div>
+}
+else if (Cards.Count > 0)
+{
+    <div class="cards-grid">
+        @{ var icons = new[]{ "&#128181;","&#128196;","&#127381;","&#9989;" }; }
+        @for (int i = 0; i < Cards.Count; i++)
+        {
+            var card = Cards[i];
+            var icon = icons[i % icons.Length];
+            var statusClass = card.Status == "overdue" ? "status-overdue" : card.Status == "warning" ? "status-warning" : "status-ok";
+            <article class="dashboard-card kpi-card">
+                <div class="kpi-icon">@((MarkupString)icon)</div>
+                <p class="kpi-label">@card.Title</p>
+                <p class="kpi-value">@card.Value</p>
+                @if (!string.IsNullOrWhiteSpace(card.Subtext ?? card.Status))
+                {
+                    <p class="kpi-sub @statusClass">@(card.Subtext ?? card.Status)</p>
+                }
+            </article>
+        }
+    </div>
+}
+
+<!-- Data grid -->
+<div class="cards-grid">
+    <!-- Announcements -->
+    <article class="dashboard-card" style="grid-column:span 1;">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;display:flex;align-items:center;gap:0.5rem;">&#128226; Announcements</h3>
+        @if (Announcements.Count == 0)
+        {
+            <p style="color:var(--text-muted);font-size:0.86rem;">No announcements at this time.</p>
+        }
+        else
+        {
+            <ul class="data-list">
+                @foreach (var item in Announcements)
+                {
+                    <li>
+                        <span class="list-label">@item.Title</span>
+                        <span class="list-meta">@item.Message</span>
+                    </li>
+                }
+            </ul>
+        }
+    </article>
+
+    <!-- Invoices -->
+    <article class="dashboard-card" style="grid-column:span 1;">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;display:flex;align-items:center;gap:0.5rem;">&#128181; Invoices</h3>
+        @if (Invoices.Count == 0)
+        {
+            <p style="color:var(--text-muted);font-size:0.86rem;">No invoices found.</p>
+        }
+        else
+        {
+            <ul class="data-list">
+                @foreach (var inv in Invoices.Take(5))
+                {
+                    var invClass = inv.Status == "Overdue" ? "status-overdue" : inv.Status == "Paid" ? "status-ok" : "status-warning";
+                    <li>
+                        <span class="list-label">@inv.InvoiceNumber &mdash; @inv.Total.ToString("C")</span>
+                        <span class="list-meta @invClass">@inv.Status</span>
+                    </li>
+                }
+            </ul>
+        }
+    </article>
+
+    <!-- Support Tickets -->
+    <article class="dashboard-card" style="grid-column:span 1;">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;display:flex;align-items:center;gap:0.5rem;">&#128220; Support Tickets</h3>
+        @if (Tickets.Count == 0)
+        {
+            <p style="color:var(--text-muted);font-size:0.86rem;">No open support tickets.</p>
+        }
+        else
+        {
+            <ul class="data-list">
+                @foreach (var ticket in Tickets.Take(5))
+                {
+                    var tClass = ticket.Priority == "High" || ticket.Priority == "Critical" ? "badge-error" : "badge-warn";
+                    <li>
+                        <span class="list-label">@ticket.Subject</span>
+                        <span class="badge @tClass">@ticket.Priority</span>
+                    </li>
+                }
+            </ul>
+        }
+    </article>
+</div>
+
+<div class="panel" style="margin-top:0.5rem;">
+    <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">Quick Actions</h3>
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+        <a href="/customerportal/invoices" class="btn-hero secondary" style="justify-content:center;padding:0.55rem 1rem;font-size:0.84rem;">View Invoices</a>
+        <a href="/customerportal/support-tickets" class="btn-hero secondary" style="justify-content:center;padding:0.55rem 1rem;font-size:0.84rem;">Raise Ticket</a>
+        <a href="/customerportal/subscription" class="btn-hero secondary" style="justify-content:center;padding:0.55rem 1rem;font-size:0.84rem;">My Subscription</a>
+    </div>
+</div>
+
+<!-- Plan Advisor -->
+<div class="panel">
+    <h3 class="section-title">&#129300; Plan Advisor</h3>
+    <p style="color:var(--text-secondary);margin-bottom:1rem;">Enter your team size and monthly pipeline to get a plan recommendation.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;max-width:680px;">
+        <div style="flex:1;min-width:140px;">
+            <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Team Size</label>
+            <input @bind="TeamSize" type="number" min="1" placeholder="10" />
+        </div>
+        <div style="flex:2;min-width:180px;">
+            <label style="font:600 0.78rem 'Manrope',sans-serif;text-transform:uppercase;letter-spacing:0.06rem;color:var(--text-muted);display:block;margin-bottom:0.3rem;">Monthly Pipeline ($)</label>
+            <input @bind="Pipeline" type="number" min="0" placeholder="100000" />
+        </div>
+        <button @onclick="Recommend" style="flex:0 0 auto;white-space:nowrap;padding:0.68rem 1.3rem;">Get Recommendation</button>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(Recommendation))
+    {
+        <div style="margin-top:1rem;padding:0.9rem 1.1rem;border-radius:12px;background:rgba(13,148,136,0.1);border:1px solid rgba(13,148,136,0.25);">
+            <p style="margin:0;font-weight:700;color:var(--c-teal-500);">&#9989; @Recommendation</p>
+        </div>
+    }
+</div>
+
+@code {
+    private List<DashboardCardDto> Cards { get; set; } = [];
+    private List<AnnouncementDto> Announcements { get; set; } = [];
+    private List<InvoiceSummaryDto> Invoices { get; set; } = [];
+    private List<SupportTicketDto> Tickets { get; set; } = [];
+    private bool IsLoading { get; set; } = true;
+    private int TeamSize = 10;
+    private int Pipeline = 100000;
+    private string Recommendation = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/customer-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role is not ("CustomerAdmin" or "WrkPlanAdmin"))
+        {
+            Nav.NavigateTo("/customerhub/dashboard", forceLoad: true);
+            return;
+        }
+
+        var dashboard = await Api.GetPortalDashboardAsync();
+        Cards = dashboard?.Data?.Cards ?? [];
+
+        Announcements = (await Api.GetAnnouncementsAsync())?.Data ?? [];
+        Invoices = (await Api.GetInvoicesAsync())?.Data ?? [];
+        Tickets = (await Api.GetSupportTicketsAsync())?.Data ?? [];
+        IsLoading = false;
+        StateHasChanged();
+    }
+
+    private void Recommend()
+    {
+        Recommendation = TeamSize > 100 || Pipeline > 1000000
+            ? "Enterprise annual with API and training package"
+            : TeamSize > 25
+                ? "Growth quarterly with onboarding accelerator"
+                : "Core monthly starter";
+    }
+}

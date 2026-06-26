@@ -1,0 +1,184 @@
+﻿@inherits LayoutComponentBase
+@inject ThemeStateService Theme
+@inject SessionService Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="shell @(Theme.Current.IsDarkMode ? "dark" : "light") @(_sidebarCollapsed ? "sidebar-collapsed" : string.Empty)" style="--tenant-bg-r:@Theme.Current.BackgroundR;--tenant-bg-g:@Theme.Current.BackgroundG;--tenant-bg-b:@Theme.Current.BackgroundB;">
+    <aside class="sidebar @(_sidebarCollapsed ? "collapsed" : string.Empty)">
+        <NavMenu Collapsed="_sidebarCollapsed" OnLogoutRequested="OpenLogoutDialog" />
+    </aside>
+
+    <main>
+        <header class="topbar">
+            <div class="topbar-brand">
+                <button class="ghost-btn menu-toggle" @onclick="ToggleSidebar">@(_sidebarCollapsed ? "&#9776; Expand" : "&#9776; Collapse")</button>
+                @if (ShowBackButton)
+                {
+                    <button class="ghost-btn back-btn" @onclick="NavigateBack">&#8592; Back</button>
+                }
+                <p>WrkPlan Platform</p>
+                <h1>Customer Hub + Customer Portal</h1>
+            </div>
+            <div class="topbar-actions">
+                @if (Session.IsAuthenticated)
+                {
+                    var roleLabel = Session.Auth?.Role == "WrkPlanAdmin" ? "&#128737; Admin" : "&#128100; Customer";
+                    <span class="role-chip">@((MarkupString)roleLabel)</span>
+                    <button class="ghost-btn" @onclick="OpenLogoutDialog">&#128682; Logout</button>
+                }
+                <button class="ghost-btn theme-btn" @onclick="ToggleTheme">
+                    @(Theme.Current.IsDarkMode ? "&#9728;&#65039; Light" : "&#127769; Dark")
+                </button>
+            </div>
+        </header>
+
+        <article class="content-area">
+            @Body
+        </article>
+    </main>
+</div>
+
+@if (_showLogoutDialog)
+{
+    <div class="logout-overlay" @onclick="CloseLogoutDialog">
+        <div class="logout-modal" @onclick:stopPropagation="true">
+            <div class="logout-accent"></div>
+            <h3>Sign out now?</h3>
+            <p>Your current session will end and you will be redirected to the landing page.</p>
+            <div class="logout-actions">
+                <button class="ghost-btn" @onclick="CloseLogoutDialog">Stay here</button>
+                <button class="logout-confirm" @onclick="ConfirmLogout">Logout</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly List<string> _routeHistory = [];
+    private bool _suppressNextHistoryPush;
+    private bool _backGuardEnabled;
+    private bool _sidebarCollapsed;
+    private bool _showLogoutDialog;
+
+    protected override void OnInitialized()
+    {
+        Theme.Changed += StateHasChanged;
+        Session.Changed += StateHasChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        _routeHistory.Add(Nav.Uri);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Theme.InitializeAsync();
+        await Session.TryRestoreAsync();
+        await UpdateBackGuardAsync();
+        StateHasChanged();
+    }
+
+    private async Task ToggleTheme()
+    {
+        await Theme.SetAsync(Theme.Current with { IsDarkMode = !Theme.Current.IsDarkMode });
+    }
+
+    private async Task ConfirmLogout()
+    {
+        _showLogoutDialog = false;
+        await Session.ClearAsync();
+        await DisableBackGuardAsync();
+        Nav.NavigateTo("/", true);
+    }
+
+    private void OpenLogoutDialog()
+    {
+        _showLogoutDialog = true;
+    }
+
+    private void CloseLogoutDialog()
+    {
+        _showLogoutDialog = false;
+    }
+
+    private void ToggleSidebar()
+    {
+        _sidebarCollapsed = !_sidebarCollapsed;
+    }
+
+    private bool ShowBackButton => Session.IsAuthenticated && _routeHistory.Count > 1 && IsProtectedRoute(Nav.Uri) && !IsDashboardRoute(Nav.Uri);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (_suppressNextHistoryPush)
+        {
+            _suppressNextHistoryPush = false;
+        }
+        else if (_routeHistory.Count == 0 || !string.Equals(_routeHistory[^1], e.Location, StringComparison.OrdinalIgnoreCase))
+        {
+            _routeHistory.Add(e.Location);
+            if (_routeHistory.Count > 80)
+            {
+                _routeHistory.RemoveAt(0);
+            }
+        }
+
+        _ = InvokeAsync(async () =>
+        {
+            await UpdateBackGuardAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async Task NavigateBack()
+    {
+        if (_routeHistory.Count < 2) return;
+        var target = _routeHistory[^2];
+        _routeHistory.RemoveAt(_routeHistory.Count - 1);
+        _routeHistory.RemoveAt(_routeHistory.Count - 1);
+        _suppressNextHistoryPush = true;
+        Nav.NavigateTo(target);
+        await Task.CompletedTask;
+    }
+
+    private bool IsProtectedRoute(string absoluteUri)
+    {
+        var relative = Nav.ToBaseRelativePath(absoluteUri).ToLowerInvariant();
+        return relative.StartsWith("customerportal") || relative.StartsWith("customerhub");
+    }
+
+    private bool IsDashboardRoute(string absoluteUri)
+    {
+        var relative = Nav.ToBaseRelativePath(absoluteUri).ToLowerInvariant();
+        return relative == "customerportal/dashboard" || relative == "customerhub/dashboard";
+    }
+
+    private async Task UpdateBackGuardAsync()
+    {
+        var shouldEnable = Session.IsAuthenticated && IsProtectedRoute(Nav.Uri);
+        if (shouldEnable == _backGuardEnabled) return;
+
+        _backGuardEnabled = shouldEnable;
+        if (shouldEnable)
+        {
+            await JS.InvokeVoidAsync("wrkplanNavGuard.enable");
+        }
+        else
+        {
+            await DisableBackGuardAsync();
+        }
+    }
+
+    private async Task DisableBackGuardAsync()
+    {
+        _backGuardEnabled = false;
+        await JS.InvokeVoidAsync("wrkplanNavGuard.disable");
+    }
+
+    public void Dispose()
+    {
+        Theme.Changed -= StateHasChanged;
+        Session.Changed -= StateHasChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

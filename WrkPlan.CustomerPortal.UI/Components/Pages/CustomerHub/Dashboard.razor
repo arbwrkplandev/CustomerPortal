@@ -1,0 +1,106 @@
+@page "/customerhub/dashboard"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128737; Customer Hub</h2>
+    <p>Internal operations center &mdash; <strong>@Session.Auth?.Role</strong> on tenant <strong>@Session.TenantKey</strong></p>
+</div>
+
+<!-- KPI Cards -->
+@if (Cards.Count == 0 && IsLoading)
+{
+    <div class="cards-grid">
+        @for (int i = 0; i < 4; i++)
+        {
+            <article class="dashboard-card kpi-card" style="opacity:0.5;">
+                <div class="kpi-icon">&#8987;</div>
+                <p class="kpi-label">Loading...</p>
+                <p class="kpi-value">&#x2014;</p>
+            </article>
+        }
+    </div>
+}
+else if (Cards.Count > 0)
+{
+    <div class="cards-grid">
+        @{ var hubIcons = new[]{ "&#128101;","&#128202;","&#128176;","&#9989;" }; }
+        @for (int i = 0; i < Cards.Count; i++)
+        {
+            var card = Cards[i];
+            var icon = hubIcons[i % hubIcons.Length];
+            var statusClass = card.Status == "overdue" ? "status-overdue" : card.Status == "warning" ? "status-warning" : "status-ok";
+            <article class="dashboard-card kpi-card">
+                <div class="kpi-icon" style="background:linear-gradient(135deg,#4f46e5,#0ea5e9);">@((MarkupString)icon)</div>
+                <p class="kpi-label">@card.Title</p>
+                <p class="kpi-value">@card.Value</p>
+                @if (!string.IsNullOrWhiteSpace(card.Subtext ?? card.Status))
+                {
+                    <p class="kpi-sub @statusClass">@(card.Subtext ?? card.Status)</p>
+                }
+            </article>
+        }
+    </div>
+}
+
+<div class="cards-grid">
+    <article class="dashboard-card">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">&#128203; Control Center</h3>
+        <ul class="data-list">
+            <li><span class="list-label">Customer Lifecycle</span><span class="badge badge-ok">Active</span></li>
+            <li><span class="list-label">Sales Quote Orchestration</span><span class="badge badge-ok">Active</span></li>
+            <li><span class="list-label">Cross-tenant Reporting</span><span class="badge badge-ok">Active</span></li>
+            <li><span class="list-label">Stripe Billing Operations</span><span class="badge badge-ok">Active</span></li>
+            <li><span class="list-label">Integration Abstractions</span><span class="badge badge-ok">Active</span></li>
+        </ul>
+    </article>
+
+    <article class="dashboard-card">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">&#128279; Quick Actions</h3>
+        <div style="display:grid;gap:0.6rem;">
+            <a href="/customerhub/tenants" class="btn-hero secondary" style="justify-content:center;padding:0.6rem 1rem;font-size:0.85rem;">&#128101; Tenant Management</a>
+            <a href="/customerhub/questionnaire-setup" class="btn-hero secondary" style="justify-content:center;padding:0.6rem 1rem;font-size:0.85rem;">&#128221; Questionnaire Setup</a>
+            <a href="/customerhub/subscription-plans" class="btn-hero secondary" style="justify-content:center;padding:0.6rem 1rem;font-size:0.85rem;">&#128230; Subscription Tagging</a>
+            <a href="/customerportal/dashboard" class="btn-hero secondary" style="justify-content:center;padding:0.6rem 1rem;font-size:0.85rem;">&#127760; View Portal Dashboard</a>
+            <a href="/customerportal/onboarding" class="btn-hero secondary" style="justify-content:center;padding:0.6rem 1rem;font-size:0.85rem;">&#9989; Onboarding Hub</a>
+            <a href="/customerportal/theme" class="btn-hero secondary" style="justify-content:center;padding:0.6rem 1rem;font-size:0.85rem;">&#127912; Theme Settings</a>
+        </div>
+    </article>
+
+    <article class="dashboard-card">
+        <h3 style="font:700 1rem 'Sora',sans-serif;margin-bottom:0.9rem;">&#128279; Integration Stack</h3>
+        <ul class="data-list">
+            <li><span class="list-label">Email</span><span class="badge badge-ok">Ready</span></li>
+            <li><span class="list-label">Calendar Sync</span><span class="badge badge-ok">Ready</span></li>
+            <li><span class="list-label">E-Sign</span><span class="badge badge-ok">Ready</span></li>
+            <li><span class="list-label">JotForm Webhooks</span><span class="badge badge-ok">Ready</span></li>
+        </ul>
+    </article>
+</div>
+
+@code {
+    private List<DashboardCardDto> Cards { get; set; } = [];
+    private bool IsLoading { get; set; } = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", forceLoad: true);
+            return;
+        }
+
+        var result = await Api.GetHubDashboardAsync();
+        Cards = result?.Data?.Cards ?? [];
+        IsLoading = false;
+        StateHasChanged();
+    }
+}

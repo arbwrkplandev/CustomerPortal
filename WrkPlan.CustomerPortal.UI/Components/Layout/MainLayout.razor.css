@@ -1,0 +1,322 @@
+﻿.shell {
+    --font-heading: "Sora","Segoe UI",sans-serif;
+    --font-body:    "Manrope","Segoe UI",sans-serif;
+    display: grid;
+    grid-template-columns: 268px 1fr;
+    min-height: 100vh;
+    background:
+        radial-gradient(circle at 88% 12%, rgba(14,165,233,0.20), transparent 42%),
+        radial-gradient(circle at 14% 88%, rgba(13,148,136,0.15), transparent 40%),
+        linear-gradient(150deg, rgba(var(--tenant-bg-r,247),var(--tenant-bg-g,249),var(--tenant-bg-b,252),0.22), var(--bg-page) 55%);
+    color: var(--text-primary);
+    transition: background 0.5s ease, color 0.3s ease;
+}
+
+.shell.sidebar-collapsed {
+    grid-template-columns: 94px 1fr;
+}
+
+.shell.dark {
+    background:
+        radial-gradient(circle at 88% 12%, rgba(14,165,233,0.28), transparent 45%),
+        radial-gradient(circle at 14% 88%, rgba(45,212,191,0.16), transparent 42%),
+        linear-gradient(150deg, rgba(var(--tenant-bg-r,4),var(--tenant-bg-g,9),var(--tenant-bg-b,26),0.38), var(--bg-page) 58%);
+}
+
+/* ── Sidebar ─────────────────────────────────── */
+.sidebar {
+    /* Light mode: clean white-ish sidebar */
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    border-right: 1px solid rgba(148,163,184,0.3);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    padding: 1.4rem 1rem 2rem;
+    overflow-y: auto;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148,163,184,0.4) transparent;
+    transition: background 0.4s ease, border-color 0.4s ease;
+}
+
+.sidebar.collapsed {
+    padding: 1.1rem 0.55rem 1.2rem;
+}
+
+.sidebar.collapsed .brand {
+    justify-content: center;
+    padding: 0.2rem 0 0.9rem;
+}
+
+.sidebar.collapsed .brand-text,
+.sidebar.collapsed .nav-group-label,
+.sidebar.collapsed .sidebar-footer {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    pointer-events: none;
+    margin: 0;
+    padding: 0;
+}
+
+.sidebar.collapsed .menu-link {
+    justify-content: center;
+    padding: 0.55rem 0.4rem;
+}
+
+.sidebar.collapsed .menu-link .nav-text {
+    display: none;
+}
+
+/* Dark mode sidebar */
+.dark .sidebar {
+    background: linear-gradient(180deg, #0f1c2e 0%, #0a1628 100%);
+    border-right-color: rgba(56,71,99,0.45);
+    scrollbar-color: rgba(56,71,99,0.5) transparent;
+}
+
+/* ── Main column ─────────────────────────────── */
+main { display: flex; flex-direction: column; min-height: 100vh; overflow: hidden; }
+
+/* ── Topbar ──────────────────────────────────── */
+.topbar {
+    padding: 0.9rem 1.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    flex-wrap: wrap;
+}
+
+.topbar-brand p {
+    margin: 0;
+    font: 600 0.72rem var(--font-body);
+    color: var(--text-muted);
+    letter-spacing: 0.09rem;
+    text-transform: uppercase;
+}
+
+.topbar-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.back-btn {
+    align-self: flex-start;
+    margin-bottom: 0.15rem;
+    font-weight: 700;
+    border-color: rgba(14,165,233,0.34);
+}
+
+.menu-toggle {
+    align-self: flex-start;
+    margin-bottom: 0.15rem;
+    font-weight: 700;
+}
+
+.topbar-brand h1 {
+    margin: 0;
+    font: 700 1.05rem var(--font-heading);
+    color: var(--text-primary);
+    letter-spacing: -0.01rem;
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.role-chip {
+    padding: 0.3rem 0.75rem;
+    border-radius: 99px;
+    font: 700 0.72rem "Manrope",sans-serif;
+    letter-spacing: 0.06rem;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, rgba(13,148,136,0.18), rgba(14,165,233,0.18));
+    color: #0d9488;
+    border: 1px solid rgba(13,148,136,0.28);
+}
+
+.dark .role-chip { color: #2dd4bf; background: rgba(13,148,136,0.22); }
+
+.ghost-btn {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.45rem 0.85rem;
+    text-decoration: none;
+    color: var(--text-secondary);
+    background: var(--bg-glass);
+    cursor: pointer;
+    font: 600 0.82rem var(--font-body);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    backdrop-filter: blur(6px);
+}
+
+.ghost-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(15,23,42,0.12);
+    border-color: rgba(14,165,233,0.4);
+    color: var(--text-primary);
+}
+
+.ghost-btn.theme-btn {
+    background: linear-gradient(135deg, rgba(13,148,136,0.12), rgba(14,165,233,0.12));
+    border-color: rgba(13,148,136,0.3);
+    color: var(--c-teal-500, #0d9488);
+    font-weight: 700;
+}
+
+.dark .ghost-btn.theme-btn { color: #2dd4bf; }
+
+.primary-link {
+    border: 1px solid rgba(13,148,136,0.3);
+    border-radius: 10px;
+    padding: 0.45rem 0.85rem;
+    text-decoration: none;
+    color: var(--c-teal-500, #0d9488);
+    background: rgba(13,148,136,0.08);
+    font: 600 0.82rem var(--font-body);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.primary-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(13,148,136,0.2);
+}
+
+/* ── Content area ────────────────────────────── */
+.content-area {
+    padding: 1.5rem 1.8rem 2rem;
+    flex: 1;
+    animation: fade-in 0.38s ease;
+}
+
+.logout-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.42);
+    display: grid;
+    place-items: center;
+    z-index: 240;
+    animation: logout-fade 0.18s ease;
+}
+
+.logout-modal {
+    width: min(430px, 92vw);
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    box-shadow: 0 24px 65px rgba(15, 23, 42, 0.28);
+    padding: 1.1rem 1.1rem 1rem;
+    animation: logout-rise 0.28s cubic-bezier(.23, 1, .32, 1);
+    position: relative;
+}
+
+.logout-accent {
+    height: 5px;
+    border-radius: 99px;
+    margin-bottom: 0.8rem;
+    background: linear-gradient(90deg, #0ea5e9, #0d9488);
+}
+
+.logout-modal h3 {
+    margin: 0 0 0.3rem;
+    font: 700 1.1rem var(--font-heading);
+}
+
+.logout-modal p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.logout-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    margin-top: 1rem;
+}
+
+.logout-confirm {
+    border: 0;
+    border-radius: 10px;
+    padding: 0.47rem 0.85rem;
+    font: 700 0.83rem var(--font-body);
+    color: #fff;
+    background: linear-gradient(135deg, #dc2626, #ef4444);
+    box-shadow: 0 10px 24px rgba(220, 38, 38, 0.34);
+    cursor: pointer;
+    transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.logout-confirm:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.07);
+}
+
+@keyframes logout-rise {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes logout-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 1024px) {
+    .shell { grid-template-columns: 240px 1fr; }
+}
+
+@media (max-width: 768px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar { position: relative; height: auto; padding: 1rem; }
+    .topbar-brand { width: 100%; }
+    .shell.sidebar-collapsed { grid-template-columns: 1fr; }
+}
+
+/* ── Error UI ─────────────────────────────────── */
+#blazor-error-ui {
+    background: #fef3c7;
+    bottom: 0; left: 0;
+    box-shadow: 0 -2px 8px rgba(0,0,0,0.15);
+    display: none;
+    padding: 0.65rem 1.4rem;
+    position: fixed;
+    width: 100%;
+    z-index: 9999;
+    font-size: 0.9rem;
+    color: #78350f;
+    border-top: 2px solid #f59e0b;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.9rem;
+    top: 0.6rem;
+    font-size: 1.1rem;
+}

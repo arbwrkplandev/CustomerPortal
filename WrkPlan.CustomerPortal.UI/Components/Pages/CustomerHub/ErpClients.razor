@@ -1,0 +1,186 @@
+@page "/customerhub/erp-clients"
+@inject PortalApiClient Api
+@inject SessionService Session
+@inject NavigationManager Nav
+
+<div class="page-header">
+    <h2>&#128295; ERP Clients</h2>
+    <p>Live data from <code>nextgen_admin.dbo.TB_ERP_CLIENT_DETAIL</code></p>
+</div>
+
+@if (!_ready)
+{
+    <div class="erp-loading-wrap">
+        <div class="erp-spinner"></div>
+        <p>Restoring session&hellip;</p>
+    </div>
+}
+else if (_error is not null)
+{
+    <article class="dashboard-card erp-error-card">
+        <div class="erp-error-icon">&#9888;</div>
+        <h3>Database Unavailable</h3>
+        <p>@_error</p>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem;">
+            Check that the <code>nextgen_admin</code> database on LocalDB contains the
+            <code>TB_ERP_CLIENT_DETAIL</code> table and the API connection string is correct.
+        </p>
+        <button class="btn-hero secondary" style="margin-top:1rem;" @onclick="LoadAsync">&#8635; Retry</button>
+    </article>
+}
+else
+{
+    <!-- Toolbar -->
+    <div class="panel erp-toolbar">
+        <input @bind="_search" @bind:event="oninput" @onkeyup="OnSearchKey"
+               placeholder="&#128269; Search by name or code&hellip;"
+               style="flex:1;max-width:360px;" />
+        <button class="btn-hero secondary" @onclick="OnSearch" style="padding:0.5rem 1.1rem;font-size:0.85rem;">Search</button>
+        <span class="tag">@_total result@(_total == 1 ? "" : "s")</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="erp-loading-wrap">
+            <div class="erp-spinner"></div>
+        </div>
+    }
+    else if (_items.Count == 0)
+    {
+        <article class="dashboard-card" style="text-align:center;padding:3rem;">
+            <p style="font-size:2rem;margin-bottom:0.5rem;">&#128203;</p>
+            <h3>No ERP Clients Found</h3>
+            <p style="color:var(--text-muted);">
+                @if (!string.IsNullOrWhiteSpace(_search))
+                {
+                    <span>No records match "<strong>@_search</strong>".</span>
+                }
+                else
+                {
+                    <span>The <code>TB_ERP_CLIENT_DETAIL</code> table appears to be empty.</span>
+                }
+            </p>
+        </article>
+    }
+    else
+    {
+        <div class="panel" style="padding:0;overflow:hidden;">
+            <div style="overflow-x:auto;">
+                <table class="erp-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Client Name</th>
+                            <th>Client Code</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _items)
+                        {
+                            <tr>
+                                <td class="erp-id">@item.Id</td>
+                                <td>@(item.ClientName ?? "—")</td>
+                                <td><span class="tag">@(item.ClientCode ?? "—")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        @if (_totalPages > 1)
+        {
+            <div class="erp-pagination">
+                <button class="ghost-btn" disabled="@(_page <= 1)" @onclick="PrevPage">&#8592; Prev</button>
+                <span class="erp-page-info">Page @_page of @_totalPages</span>
+                <button class="ghost-btn" disabled="@(_page >= _totalPages)" @onclick="NextPage">Next &#8594;</button>
+            </div>
+        }
+    }
+}
+
+@code {
+    private List<ErpClientDto> _items = [];
+    private string? _error;
+    private string _search = string.Empty;
+    private bool _loading;
+    private bool _ready;
+    private int _page = 1;
+    private int _pageSize = 20;
+    private int _total;
+    private int _totalPages => (int)Math.Ceiling((double)_total / _pageSize);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Session.TryRestoreAsync();
+        _ready = true;
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/auth/admin-login", forceLoad: true);
+            return;
+        }
+        if (Session.Auth?.Role != "WrkPlanAdmin")
+        {
+            Nav.NavigateTo("/customerportal/dashboard", forceLoad: true);
+            return;
+        }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var result = await Api.GetErpClientsAsync(_page, _pageSize, _search);
+            if (result?.Success == true && result.Data is not null)
+            {
+                _items = result.Data.Items.ToList();
+                _total = result.Data.TotalCount;
+            }
+            else
+            {
+                _error = result?.Error?.Message ?? "Unexpected error loading ERP clients.";
+                _items = [];
+                _total = 0;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _items = [];
+            _total = 0;
+        }
+        finally
+        {
+            _loading = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnSearch()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await OnSearch();
+    }
+
+    private async Task PrevPage()
+    {
+        if (_page > 1) { _page--; await LoadAsync(); }
+    }
+
+    private async Task NextPage()
+    {
+        if (_page < _totalPages) { _page++; await LoadAsync(); }
+    }
+}
