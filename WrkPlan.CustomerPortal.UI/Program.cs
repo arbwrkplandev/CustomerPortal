@@ -6,7 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddHubOptions(o => o.MaximumReceiveMessageSize = 10 * 1024 * 1024); // 10 MB for PDF transfers
 builder.Services.AddBlazoredLocalStorage();
 builder.Services.AddHttpClient("WrkPlanApi", client =>
 {

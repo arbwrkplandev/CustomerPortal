@@ -85,6 +85,8 @@ public record ContractSummaryDto(
     string Title,
     string Version,
     string Status,
+    string? ESignStatus,
+    string? ESignFieldsJson,
     DateTime EffectiveUtc,
     DateTime ExpiryUtc,
     DateTime? SentUtc,
@@ -121,6 +123,10 @@ public record ContractDetailDto(
     string Title,
     string HeaderText,
     string BodyJson,
+    string ESignStatus,
+    string? SignedPdfPath,
+    List<ESignFieldDto> ESignFields,
+    List<ESignEntryDto> ESignEntries,
     string Version,
     string Status,
     DateTime EffectiveUtc,
@@ -185,6 +191,60 @@ public record CustomerApplySignatureDto(
     bool Confirm = false);
 
 public record ContractStatusTransitionDto(Guid ContractId, string ToStatus, string? Notes = null);
+
+public record ESignFieldDto(string Id, string Label, string Type, bool Required, int Order);
+public record AddESignFieldsDto(Guid ContractId, List<ESignFieldDto> Fields);
+public record SendContractDto(Guid ContractId);
+public record SubmitESignEntryDto(Guid ContractId, string FieldId, string FieldLabel, string ValueDataUrl, string SignedByName);
+public record ESignEntryDto(string FieldId, string FieldLabel, string ValueDataUrl, string SignedByName, DateTime SignedAtUtc);
+public record ESignSubmitResultDto(bool IsComplete, string? SignedPdfPath);
+
+public record ContractSignFieldDto(
+    string FieldId,
+    string Label,
+    string FieldType,
+    int PageNumber,
+    float X,
+    float Y,
+    float Width,
+    float Height,
+    bool IsRequired);
+
+public record ContractWithSignFieldsDto(
+    Guid ContractId,
+    string ContractNumber,
+    List<ContractSignFieldDto> SignatureFields,
+    string Status,
+    DateTime? SentToCustomerUtc);
+
+public record SignatureSessionDto(
+    Guid SessionId,
+    string SessionToken,
+    Guid ContractId,
+    string ContractNumber,
+    List<ContractSignFieldDto> Fields,
+    string CompanyName);
+
+public record SubmitFieldSignatureDto(
+    string SessionToken,
+    string FieldId,
+    string SignatureDataUrl,
+    string SignedByName);
+
+public record SigningStatusDto(
+    Guid SessionId,
+    int TotalRequired,
+    int TotalSigned,
+    bool IsComplete,
+    string? SignedPdfPath);
+
+public record PendingContractSessionDto(
+    Guid SessionId,
+    string SessionToken,
+    Guid ContractId,
+    string ContractNumber,
+    DateTime ExpiresUtc,
+    string Status);
 
 // ── Support admin workflow ─────────────────────────────────────────────────
 public record SupportTicketMessageDto(

@@ -145,11 +145,26 @@ public class Contract : BaseEntity
     public string Title { get; set; } = "WrkPlan Service Agreement";
     public string Version { get; set; } = "v1";
     public string Status { get; set; } = "Draft";
+    public string? ESignFieldsJson { get; set; }
+    public string ESignStatus { get; set; } = "Draft";
+    public string? SignedPdfPath { get; set; }
+    public DateTime? SentToCustomerUtc { get; set; }
     public string? LastActionBy { get; set; }
     public DateTime? SentUtc { get; set; }
     public DateTime? ViewedUtc { get; set; }
     public DateTime? CustomerSignedUtc { get; set; }
     public DateTime? CompletedUtc { get; set; }
+}
+
+public class ContractESignEntry : BaseEntity
+{
+    public Guid ContractId { get; set; }
+    public string FieldId { get; set; } = string.Empty;
+    public string FieldLabel { get; set; } = string.Empty;
+    public byte[]? ValueBytes { get; set; }
+    public string ValueDataUrl { get; set; } = string.Empty;
+    public string SignedByName { get; set; } = string.Empty;
+    public DateTime SignedAtUtc { get; set; } = DateTime.UtcNow;
 }
 
 public class ContractDocument : BaseEntity

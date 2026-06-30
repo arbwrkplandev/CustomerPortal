@@ -52,3 +52,4 @@ public interface IQuoteTransitionService
 {
     (DateTime StartDateUtc, DateTime EndDateUtc, DateTime RenewalDateUtc) BuildSubscriptionTimeline(DateTime acceptedAtUtc, string cycle);
 }
+

@@ -23,3 +23,4 @@ public enum OnboardingStepType
     PaymentCheckpoint = 4,
     GoLiveReview = 5
 }
+

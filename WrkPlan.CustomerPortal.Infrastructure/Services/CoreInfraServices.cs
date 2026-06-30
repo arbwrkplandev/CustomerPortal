@@ -2,8 +2,16 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using iText.IO.Image;
+using iText.Kernel.Font;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas;
+using iText.Layout;
+using iText.Layout.Element;
+using iText.Layout.Properties;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Stripe;
@@ -278,4 +286,270 @@ public class StripePaymentService(
 
         await dbContext.SaveChangesAsync(ct);
     }
+}
+
+public class ContractESignWorkflowService(AdminDbContext dbContext, IHostEnvironment hostEnvironment)
+{
+    public async Task<ServiceResult> AddESignFieldsToContractAsync(Guid contractId, string eSignFieldsJson, CancellationToken ct = default)
+    {
+        var contract = await dbContext.Contracts.FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        if (contract is null)
+        {
+            return ServiceResult.Fail("Contract not found");
+        }
+
+        contract.ESignFieldsJson = string.IsNullOrWhiteSpace(eSignFieldsJson) ? "[]" : eSignFieldsJson;
+        contract.ESignStatus = "Draft";
+        contract.UpdatedUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(ct);
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult> SendContractToCustomerAsync(Guid contractId, CancellationToken ct = default)
+    {
+        var contract = await dbContext.Contracts.FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        if (contract is null)
+        {
+            return ServiceResult.Fail("Contract not found");
+        }
+
+        contract.ESignStatus = "AwaitingSignature";
+        contract.SentToCustomerUtc = DateTime.UtcNow;
+        contract.Status = "Sent to Customer";
+        contract.SentUtc = DateTime.UtcNow;
+        contract.UpdatedUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(ct);
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult> SubmitESignEntryAsync(Guid contractId, string fieldId, string fieldLabel, string valueDataUrl, string signedByName, CancellationToken ct = default)
+    {
+        var contract = await dbContext.Contracts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        if (contract is null)
+        {
+            return ServiceResult.Fail("Contract not found");
+        }
+
+        var existing = await dbContext.ContractESignEntries
+            .FirstOrDefaultAsync(x => x.ContractId == contractId && x.FieldId == fieldId, ct);
+
+        if (existing is null)
+        {
+            dbContext.ContractESignEntries.Add(new ContractESignEntry
+            {
+                ContractId = contractId,
+                FieldId = fieldId,
+                FieldLabel = fieldLabel,
+                ValueBytes = ToStorageBytes(valueDataUrl),
+                ValueDataUrl = valueDataUrl,
+                SignedByName = signedByName,
+                SignedAtUtc = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            existing.FieldLabel = fieldLabel;
+            existing.ValueBytes = ToStorageBytes(valueDataUrl);
+            existing.ValueDataUrl = valueDataUrl;
+            existing.SignedByName = signedByName;
+            existing.SignedAtUtc = DateTime.UtcNow;
+            existing.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+        return ServiceResult.Ok();
+    }
+
+    public async Task<ServiceResult<string>> FinalizeAndGeneratePdfAsync(Guid contractId, CancellationToken ct = default)
+    {
+        var contract = await dbContext.Contracts.FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        if (contract is null)
+        {
+            return ServiceResult<string>.Fail("Contract not found");
+        }
+
+        var fields = ParseFields(contract.ESignFieldsJson);
+        var requiredFieldIds = fields.Where(x => x.Required).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var entries = await dbContext.ContractESignEntries
+            .Where(x => x.ContractId == contractId)
+            .ToListAsync(ct);
+
+        var signedFieldIds = entries.Select(x => x.FieldId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!requiredFieldIds.All(signedFieldIds.Contains))
+        {
+            return ServiceResult<string>.Fail("Not all required fields are signed");
+        }
+
+        var outputDirectory = Path.Combine(hostEnvironment.ContentRootPath, "wwwroot", "contracts", "signed");
+        Directory.CreateDirectory(outputDirectory);
+
+        using var memoryStream = new MemoryStream();
+        using (var writer = new PdfWriter(memoryStream))
+        using (var pdf = new PdfDocument(writer))
+        using (var document = new Document(pdf))
+        {
+            document.Add(new Paragraph($"{contract.ContractNumber} - {contract.Title}").SetBold().SetFontSize(14));
+            document.Add(new Paragraph(" "));
+
+            var bodyText = await ResolveContractBodyTextAsync(contractId, contract.Title, ct);
+            foreach (var line in bodyText.Replace("\r", string.Empty).Split('\n'))
+            {
+                document.Add(new Paragraph(line));
+            }
+
+            document.Add(new Paragraph(" "));
+
+            var orderedFields = fields.OrderBy(x => x.Order).ToList();
+            foreach (var field in orderedFields)
+            {
+                var entry = entries.FirstOrDefault(x => x.FieldId.Equals(field.Id, StringComparison.OrdinalIgnoreCase));
+                if (entry is null) continue;
+
+                document.Add(new Paragraph(field.Label).SetBold());
+                if (field.Type.Equals("signature", StringComparison.OrdinalIgnoreCase))
+                {
+                    var imageBytes = entry.ValueBytes is { Length: > 0 }
+                        ? entry.ValueBytes
+                        : DecodeDataUrl(entry.ValueDataUrl);
+                    if (imageBytes.Length > 0)
+                    {
+                        var imageData = ImageDataFactory.Create(imageBytes);
+                        var image = new Image(imageData).ScaleToFit(220, 80);
+                        document.Add(image);
+                    }
+                }
+                else
+                {
+                    if (entry.ValueBytes is { Length: > 0 })
+                    {
+                        document.Add(new Paragraph(Encoding.UTF8.GetString(entry.ValueBytes)));
+                    }
+                    else
+                    {
+                        document.Add(new Paragraph(entry.ValueDataUrl));
+                    }
+                }
+
+                document.Add(new Paragraph($"Signed by {entry.SignedByName} on {entry.SignedAtUtc:dd MMM yyyy HH:mm} UTC").SetFontSize(9));
+                document.Add(new Paragraph(" "));
+            }
+
+            var footerText = $"This document was digitally signed on {DateTime.UtcNow:dd MMM yyyy HH:mm} UTC";
+            var lastPage = pdf.GetPage(pdf.GetNumberOfPages());
+            var canvas = new Canvas(new PdfCanvas(lastPage), lastPage.GetPageSize());
+            var font = PdfFontFactory.CreateFont();
+            canvas.SetFont(font).SetFontSize(9).ShowTextAligned(footerText, 36, 20, TextAlignment.LEFT);
+            canvas.Close();
+        }
+
+        var finalPath = Path.Combine(outputDirectory, $"{contractId}.pdf");
+        await System.IO.File.WriteAllBytesAsync(finalPath, memoryStream.ToArray(), ct);
+
+        var relativePath = $"contracts/signed/{contractId}.pdf";
+        contract.SignedPdfPath = relativePath;
+        contract.ESignStatus = "Signed";
+        contract.Status = "Signed by Customer";
+        contract.CustomerSignedUtc = DateTime.UtcNow;
+        contract.UpdatedUtc = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync(ct);
+
+        return ServiceResult<string>.Ok(relativePath);
+    }
+
+    public async Task<bool> AreAllRequiredFieldsSignedAsync(Guid contractId, CancellationToken ct = default)
+    {
+        var contract = await dbContext.Contracts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        if (contract is null) return false;
+
+        var fields = ParseFields(contract.ESignFieldsJson);
+        var required = fields.Where(x => x.Required).Select(x => x.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (required.Count == 0) return true;
+
+        var signed = await dbContext.ContractESignEntries.AsNoTracking()
+            .Where(x => x.ContractId == contractId)
+            .Select(x => x.FieldId)
+            .ToListAsync(ct);
+
+        return required.All(id => signed.Contains(id, StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static List<ESignFieldDto> ParseFields(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<ESignFieldDto>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private async Task<string> ResolveContractBodyTextAsync(Guid contractId, string fallbackTitle, CancellationToken ct)
+    {
+        var latestDoc = await dbContext.ContractDocuments.AsNoTracking()
+            .Where(x => x.ContractId == contractId)
+            .OrderByDescending(x => x.IsLatest)
+            .ThenByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(ct);
+
+        if (latestDoc is not null && System.IO.File.Exists(latestDoc.BlobPath))
+        {
+            try
+            {
+                return await System.IO.File.ReadAllTextAsync(latestDoc.BlobPath, ct);
+            }
+            catch
+            {
+                return fallbackTitle;
+            }
+        }
+
+        return fallbackTitle;
+    }
+
+    private static byte[] DecodeDataUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return [];
+
+        var payload = value;
+        var comma = value.IndexOf(',');
+        if (comma >= 0 && comma < value.Length - 1)
+        {
+            payload = value[(comma + 1)..];
+        }
+
+        try
+        {
+            return Convert.FromBase64String(payload);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static byte[] ToStorageBytes(string valueDataUrl)
+    {
+        if (string.IsNullOrWhiteSpace(valueDataUrl)) return [];
+        if (valueDataUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return DecodeDataUrl(valueDataUrl);
+        }
+
+        return Encoding.UTF8.GetBytes(valueDataUrl);
+    }
+}
+
+public sealed record ServiceResult(bool Success, string? ErrorMessage = null)
+{
+    public static ServiceResult Ok() => new(true, null);
+    public static ServiceResult Fail(string message) => new(false, message);
+}
+
+public sealed record ServiceResult<T>(bool Success, T? Data, string? ErrorMessage = null)
+{
+    public static ServiceResult<T> Ok(T data) => new(true, data, null);
+    public static ServiceResult<T> Fail(string message) => new(false, default, message);
 }

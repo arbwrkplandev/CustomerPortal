@@ -60,6 +60,7 @@ builder.Services.AddScoped<IOnboardingEngineService, OnboardingEngineService>();
 builder.Services.AddScoped<ICsvTransformService, CsvTransformService>();
 builder.Services.AddScoped<IRenewalService, RenewalService>();
 builder.Services.AddScoped<IQuoteTransitionService, QuoteTransitionService>();
+builder.Services.AddScoped<ContractESignWorkflowService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -80,6 +81,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("TenantScoped", policy => policy.RequireClaim("tenant_id"));
     options.AddPolicy("WrkPlanAdmin", policy => policy.RequireRole("WrkPlanAdmin"));
+    options.AddPolicy("AdminOnly", policy => policy.RequireRole("WrkPlanAdmin"));
 });
 
 builder.Services.AddHostedService<ReminderBackgroundService>();

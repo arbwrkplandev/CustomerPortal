@@ -5,6 +5,42 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
+<style>
+    .contract-body-display {
+        position: relative;
+        border-radius: 14px;
+        padding: 1rem;
+        background: linear-gradient(135deg, rgba(14, 165, 233, 0.08), rgba(16, 185, 129, 0.08));
+        border: 1px solid rgba(14, 165, 233, 0.3);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+        overflow: hidden;
+    }
+
+    .contract-body-display::before {
+        content: "";
+        position: absolute;
+        inset: -60%;
+        background: radial-gradient(circle at center, rgba(59, 130, 246, 0.18) 0%, rgba(59, 130, 246, 0) 60%);
+        animation: contract-body-glow 7s linear infinite;
+        pointer-events: none;
+    }
+
+    .contract-body-text {
+        position: relative;
+        margin: 0;
+        white-space: pre-wrap;
+        line-height: 1.62;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        font-family: 'Sora', sans-serif;
+    }
+
+    @@keyframes contract-body-glow {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
 <div class="page-header">
     <h2>Contracts Center</h2>
     <p>Review contract versions, sign digitally, or upload manually signed copies.</p>
@@ -39,6 +75,10 @@ else
                                 @if (_selectedContractId == contract.Id)
                                 {
                                     <span class="badge badge-ok">Selected</span>
+                                }
+                                @if (string.Equals(contract.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="badge badge-ok">Signed Back Copy</span>
                                 }
                             </span>
                         </li>
@@ -83,7 +123,7 @@ else
                     else
                     {
                         <ul class="data-list">
-                            @foreach (var version in _selected.Versions)
+                            @foreach (var version in _selected.Versions.OrderByDescending(x => x.IsSigned).ThenByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc))
                             {
                                 <li>
                                     <span class="list-label">@version.FileName (@version.DocumentType)</span>
@@ -96,6 +136,7 @@ else
                                         {
                                             <span class="tag">Latest</span>
                                         }
+                                        <button class="ghost-btn" style="padding:0.3rem 0.65rem;font-size:0.8rem;" @onclick="() => OpenContractModalAsync(version.Id, version.FileName)">View</button>
                                         <button class="ghost-btn" style="padding:0.3rem 0.65rem;font-size:0.8rem;" @onclick="() => DownloadDocumentAsync(version.Id)">Download</button>
                                     </span>
                                 </li>
@@ -115,16 +156,71 @@ else
                     </div>
 
                     <div class="panel" style="padding:0.8rem;">
-                        <div style="font-weight:700;margin-bottom:0.4rem;">Digital Signature in Portal</div>
-                        <InputFile OnChange="OnSignatureFileSelected" accept="image/png,image/jpeg" />
-                        <div class="field-row" style="grid-template-columns:1fr 1fr;margin-top:0.55rem;">
-                            <input type="number" min="0" max="100" step="0.1" @bind="_sigX" placeholder="X position (%)" />
-                            <input type="number" min="0" max="100" step="0.1" @bind="_sigY" placeholder="Y position (%)" />
-                        </div>
-                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.55rem;">
-                            <button class="ghost-btn" @onclick="PreviewDigitalSignatureAsync" disabled="@_digitalBusy">Preview</button>
-                            <button @onclick="ConfirmDigitalSignatureAsync" disabled="@_digitalBusy">@(_digitalBusy ? "Submitting..." : "Confirm Signature")</button>
-                        </div>
+                        <div style="font-weight:700;margin-bottom:0.4rem;">E-Sign Fields</div>
+
+                        @if (string.Equals(_selected.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <div class="auth-status success" style="margin-bottom:0.6rem;">Contract is fully signed.</div>
+                        }
+
+                        @if (_selected.ESignFields.Count == 0)
+                        {
+                            <p style="margin:0;color:var(--text-muted);">No e-sign fields configured for this contract.</p>
+                        }
+                        else
+                        {
+                            <div style="margin-bottom:0.55rem;font-size:0.86rem;color:var(--text-secondary);">
+                                Progress: @_signedRequiredFields / @_requiredFields required fields submitted
+                            </div>
+                            <input @bind="_eSignSignerName" placeholder="Your full name (for signing)" style="margin-bottom:0.6rem;" />
+
+                            <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                                @foreach (var field in _selected.ESignFields.OrderBy(x => x.Order))
+                                {
+                                    var fieldCompleted = IsFieldSubmitted(field.Id);
+                                    <div class="panel" style="padding:0.65rem;">
+                                        <div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+                                            <div>
+                                                <div style="font-weight:700;">@field.Label</div>
+                                                <div style="font-size:0.78rem;color:var(--text-muted);">Type: @field.Type @(field.Required ? "• Required" : "• Optional")</div>
+                                            </div>
+                                            @if (fieldCompleted)
+                                            {
+                                                <span class="badge badge-ok">Submitted</span>
+                                            }
+                                        </div>
+
+                                        @if (!fieldCompleted)
+                                        {
+                                            <div style="margin-top:0.55rem;">
+                                                @if (field.Type.Equals("signature", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <InputFile OnChange="(e => OnESignSignatureSelected(field.Id, e))" accept="image/png,image/jpeg" />
+                                                    <input @bind="_eSignInputValues[field.Id]" placeholder="Or type your signature text" style="margin-top:0.45rem;" />
+                                                }
+                                                else if (field.Type.Equals("date", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <input type="date"
+                                                           value="@GetDateFieldValue(field.Id)"
+                                                           @onchange="(e => SetDateFieldValue(field.Id, e.Value?.ToString()))" />
+                                                }
+                                                else
+                                                {
+                                                    <input @bind="_eSignInputValues[field.Id]" placeholder="Enter value" />
+                                                }
+
+                                                <button type="button" style="margin-top:0.45rem;" @onclick="(() => SubmitESignFieldAsync(field))" disabled="@_eSignBusy">@(_eSignBusy ? "Submitting..." : "Apply")</button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(_selected.SignedPdfPath))
+                        {
+                            <button class="ghost-btn" style="margin-top:0.65rem;" @onclick="DownloadSignedPdfAsync">Download Signed PDF</button>
+                        }
                     </div>
                 </div>
 
@@ -161,6 +257,93 @@ else
     </div>
 }
 
+@if (_showContractModal && _selected is not null)
+{
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.2rem;">
+        <div class="panel" style="width:min(1120px,96vw);max-height:92vh;overflow:auto;padding:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.8rem;">
+                <div>
+                    <div style="font-weight:800;font-size:1.05rem;">@_selected.ContractNumber - @_selected.Title</div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);">Status: @_selected.Status | E-Sign: @_selected.ESignStatus</div>
+                </div>
+                <button class="ghost-btn" @onclick="CloseContractModalAsync">Close</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:0.9rem;margin-top:0.9rem;">
+                <!-- toolbar -->
+                <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
+                    @if (_selected.Versions.Count > 0)
+                    {
+                        <select value="@(_selectedPreviewVersionId?.ToString() ?? string.Empty)" @onchange="OnCustomerPreviewVersionChanged" style="max-width:280px;">
+                            @foreach (var item in _selected.Versions.OrderByDescending(x => x.IsSigned).ThenByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc))
+                            {
+                                <option value="@item.Id">@item.FileName (@item.DocumentType)</option>
+                            }
+                        </select>
+                        <button class="ghost-btn" @onclick="(() => DownloadDocumentAsync(_selected.Versions.OrderByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc).First().Id))">Download Latest</button>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_selected.SignedPdfPath))
+                    {
+                        <button class="ghost-btn" @onclick="UseSignedPreviewAsync">View Signed Copy</button>
+                        <button class="ghost-btn" @onclick="DownloadSignedPdfAsync">Download Signed PDF</button>
+                    }
+                    @if (_previewLoading)
+                    {
+                        <span style="font-size:0.82rem;color:var(--text-muted);">Loading preview…</span>
+                    }
+                </div>
+
+                <!-- preview area -->
+                <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:0.9rem;">
+                    <div class="panel" style="padding:0.85rem;overflow:auto;max-height:74vh;">
+                        <div style="font-weight:700;margin-bottom:0.5rem;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04rem;">Contract Body</div>
+                        <div class="contract-body-display">
+                            <pre class="contract-body-text">@GetDisplayBodyText(_selected)</pre>
+                        </div>
+                    </div>
+                    <div class="panel" style="padding:0.85rem;display:flex;flex-direction:column;gap:0.5rem;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+                            <div style="font-weight:700;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04rem;">Document Preview</div>
+                            @if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+                            {
+                                <a class="ghost-btn" style="padding:0.25rem 0.55rem;font-size:0.78rem;text-decoration:none;" href="@_contractPreviewDataUrl" target="_blank" rel="noopener">Open in new tab</a>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+                        {
+                            <object data="@_contractPreviewDataUrl" type="application/pdf" style="width:100%;flex:1;min-height:60vh;border:1px solid rgba(125,140,160,0.2);border-radius:10px;background:#fff;">
+                                <embed src="@_contractPreviewDataUrl" type="application/pdf" style="width:100%;height:100%;" />
+                                <div style="padding:1rem;color:var(--text-secondary);font-size:0.85rem;">
+                                    Inline PDF preview is not supported by this browser. <a href="@_contractPreviewDataUrl" target="_blank" rel="noopener">Open in new tab</a> or use the Download button above.
+                                </div>
+                            </object>
+                        }
+                        else if (_previewError)
+                        {
+                            <div style="padding:1.2rem;background:rgba(239,68,68,0.06);border-radius:10px;color:var(--text-secondary);font-size:0.88rem;">
+                                <div style="font-weight:700;margin-bottom:0.35rem;">Preview unavailable</div>
+                                <div>The document could not be loaded for inline view. Use the Download button above to open it.</div>
+                            </div>
+                        }
+                        else if (_previewLoading)
+                        {
+                            <div style="display:flex;align-items:center;justify-content:center;min-height:200px;">
+                                <div class="ticket-spinner"></div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="padding:1.2rem;background:rgba(99,102,241,0.05);border-radius:10px;color:var(--text-secondary);font-size:0.88rem;">
+                                No document version available for this contract yet.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private bool _ready;
     private string? _loadError;
@@ -176,12 +359,18 @@ else
     private string? _manualSignedNotes;
     private bool _manualSignedUploading;
 
-    private string? _signatureBase64;
-    private string _signatureFileName = "signature.png";
-    private string _signatureContentType = "image/png";
-    private decimal _sigX = 50;
-    private decimal _sigY = 80;
-    private bool _digitalBusy;
+    private Dictionary<string, string> _eSignInputValues = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _submittedESignFieldIds = new(StringComparer.OrdinalIgnoreCase);
+    private string _eSignSignerName = string.Empty;
+    private int _requiredFields;
+    private int _signedRequiredFields;
+    private bool _eSignBusy;
+    private bool _showContractModal;
+    private string? _contractPreviewDataUrl;
+    private Guid? _selectedPreviewVersionId;
+    private bool _useSignedPreview;
+    private bool _previewLoading;
+    private bool _previewError;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -214,7 +403,11 @@ else
             return;
         }
 
-        _contracts = response.Data.OrderByDescending(x => x.EffectiveUtc).ToList();
+        _contracts = response.Data
+            .OrderByDescending(x => string.Equals(x.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(x => string.Equals(x.ESignStatus, "AwaitingSignature", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(x => x.EffectiveUtc)
+            .ToList();
         if (_contracts.Count > 0)
         {
             await SelectContractAsync(_contracts[0].Id);
@@ -231,6 +424,8 @@ else
         if (detail?.Success == true && detail.Data is not null)
         {
             _selected = detail.Data;
+            HydrateESignState(_selected);
+            await OpenContractModalAsync();
         }
         else
         {
@@ -307,72 +502,303 @@ else
         }
     }
 
-    private async Task OnSignatureFileSelected(InputFileChangeEventArgs args)
-    {
-        var file = args.File;
-        if (file is null) return;
-
-        _signatureFileName = file.Name;
-        _signatureContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
-        using var stream = file.OpenReadStream(5 * 1024 * 1024);
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        _signatureBase64 = Convert.ToBase64String(ms.ToArray());
-    }
-
-    private async Task PreviewDigitalSignatureAsync()
-    {
-        await SendDigitalSignatureAsync(confirm: false);
-    }
-
-    private async Task ConfirmDigitalSignatureAsync()
-    {
-        await SendDigitalSignatureAsync(confirm: true);
-    }
-
-    private async Task SendDigitalSignatureAsync(bool confirm)
+    private async Task SubmitESignFieldAsync(ESignFieldDto field)
     {
         _actionError = _actionSuccess = null;
-        if (_selectedContractId is null)
+        if (_selected is null)
         {
             _actionError = "Select a contract first.";
             return;
         }
-        if (string.IsNullOrWhiteSpace(_signatureBase64))
+
+        if (!_eSignInputValues.TryGetValue(field.Id, out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
         {
-            _actionError = "Upload a signature image first.";
+            _actionError = "Provide a value before applying.";
             return;
         }
 
-        _digitalBusy = true;
+        var signerName = string.IsNullOrWhiteSpace(_eSignSignerName) ? "Customer" : _eSignSignerName;
+        if (string.IsNullOrWhiteSpace(signerName))
+        {
+            _actionError = "Enter your full name before signing.";
+            return;
+        }
+
+        string valueToSend;
+        if (field.Type.Equals("signature", StringComparison.OrdinalIgnoreCase))
+        {
+            valueToSend = await JS.InvokeAsync<string>("wrkplanESign.signatureTextToDataUrl", rawValue.Trim());
+        }
+        else
+        {
+            valueToSend = rawValue.Trim();
+        }
+
+        _eSignBusy = true;
         try
         {
-            var response = await Api.ApplyCustomerDigitalSignatureAsync(new CustomerApplySignatureDto(
-                _selectedContractId.Value,
-                _signatureFileName,
-                _signatureContentType,
-                _signatureBase64,
-                _sigX,
-                _sigY,
-                confirm));
+            var response = await Api.SubmitESignEntryAsync(new SubmitESignEntryDto(
+                _selected.Id,
+                field.Id,
+                field.Label,
+                valueToSend,
+                signerName));
 
             if (response?.Success == true)
             {
-                _actionSuccess = confirm ? "Digital signature confirmed." : "Signature preview prepared.";
-                if (confirm)
+                _actionSuccess = "Field submitted.";
+                if (response.Data?.IsComplete == true)
                 {
+                    _actionSuccess = "All required fields are signed. Signed PDF is ready.";
                     await LoadContractsAsync();
+                }
+                else
+                {
+                    _submittedESignFieldIds.Add(field.Id);
+                    if (field.Required)
+                    {
+                        _signedRequiredFields = Math.Min(_signedRequiredFields + 1, _requiredFields);
+                    }
                 }
             }
             else
             {
-                _actionError = response?.Error?.Message ?? "Digital signature action failed.";
+                _actionError = response?.Error?.Message ?? "Unable to submit e-sign field.";
             }
         }
         finally
         {
-            _digitalBusy = false;
+            _eSignBusy = false;
             StateHasChanged();
         }
+    }
+
+    private async Task OnESignSignatureSelected(string fieldId, InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        using var stream = file.OpenReadStream(5 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
+        var b64 = Convert.ToBase64String(ms.ToArray());
+        _eSignInputValues[fieldId] = $"data:{contentType};base64,{b64}";
+    }
+
+    private async Task OpenContractModalAsync(Guid? versionId = null, string? _ = null)
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+
+        var orderedVersions = _selected.Versions.OrderByDescending(x => x.IsSigned).ThenByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc).ToList();
+        _selectedPreviewVersionId = versionId ?? orderedVersions.FirstOrDefault()?.Id;
+        _useSignedPreview = !versionId.HasValue && string.Equals(_selected.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(_selected.SignedPdfPath);
+
+        await LoadCustomerPreviewAsync();
+
+        _showContractModal = true;
+        StateHasChanged();
+    }
+
+    private async Task OnCustomerPreviewVersionChanged(ChangeEventArgs args)
+    {
+        if (Guid.TryParse(args.Value?.ToString(), out var id))
+        {
+            _selectedPreviewVersionId = id;
+            _useSignedPreview = false;
+            await LoadCustomerPreviewAsync();
+        }
+    }
+
+    private async Task UseSignedPreviewAsync()
+    {
+        _useSignedPreview = true;
+        await LoadCustomerPreviewAsync();
+    }
+
+    private async Task LoadCustomerPreviewAsync()
+    {
+        if (_selected is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+        {
+            await JS.InvokeVoidAsync("wrkplan.revokeObjectUrl", _contractPreviewDataUrl);
+        }
+
+        _contractPreviewDataUrl = null;
+        _previewLoading = true;
+        _previewError = false;
+        StateHasChanged();
+
+        (byte[] Bytes, string ContentType, string FileName)? file = null;
+
+        try
+        {
+            if (_useSignedPreview && !string.IsNullOrWhiteSpace(_selected.SignedPdfPath))
+            {
+                file = await Api.DownloadSignedPdfAsync(_selected.Id);
+            }
+
+            if (file is null)
+            {
+                var targetVersion = _selected.Versions.FirstOrDefault(x => x.Id == _selectedPreviewVersionId)
+                    ?? _selected.Versions.OrderByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc).FirstOrDefault();
+
+                if (targetVersion is not null)
+                {
+                    file = await Api.DownloadContractDocumentAsync(targetVersion.Id);
+                }
+            }
+
+            if (file is not null)
+            {
+                var base64 = Convert.ToBase64String(file.Value.Bytes);
+                _contractPreviewDataUrl = await JS.InvokeAsync<string>("wrkplan.createObjectUrlFromBytes", file.Value.ContentType, base64);
+            }
+        }
+        catch
+        {
+            _previewError = true;
+        }
+        finally
+        {
+            _previewLoading = false;
+        }
+    }
+
+    private async Task CloseContractModalAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+        {
+            await JS.InvokeVoidAsync("wrkplan.revokeObjectUrl", _contractPreviewDataUrl);
+        }
+
+        _showContractModal = false;
+        _contractPreviewDataUrl = null;
+        _selectedPreviewVersionId = null;
+        _useSignedPreview = false;
+        _previewLoading = false;
+        _previewError = false;
+    }
+
+    private async Task DownloadSignedPdfAsync()
+    {
+        _actionError = _actionSuccess = null;
+        if (_selected is null)
+        {
+            _actionError = "Select a contract first.";
+            return;
+        }
+
+        var file = await Api.DownloadSignedPdfAsync(_selected.Id);
+        if (file is null)
+        {
+            _actionError = "Unable to download signed PDF.";
+            return;
+        }
+
+        await JS.InvokeVoidAsync("wrkplan.downloadFileFromBytes", file.Value.FileName, file.Value.ContentType, Convert.ToBase64String(file.Value.Bytes));
+    }
+
+    private bool IsFieldSubmitted(string fieldId) => _submittedESignFieldIds.Contains(fieldId);
+
+    private string GetDateFieldValue(string fieldId)
+    {
+        if (!_eSignInputValues.TryGetValue(fieldId, out var value) || string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return DateTime.TryParse(value, out var dt)
+            ? dt.ToString("yyyy-MM-dd")
+            : value;
+    }
+
+    private void SetDateFieldValue(string fieldId, string? value)
+    {
+        _eSignInputValues[fieldId] = value ?? string.Empty;
+    }
+
+    private void HydrateESignState(ContractDetailDto contract)
+    {
+        _eSignInputValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        _submittedESignFieldIds = contract.ESignEntries
+            .Select(x => x.FieldId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var field in contract.ESignFields)
+        {
+            var existing = contract.ESignEntries.FirstOrDefault(x => x.FieldId.Equals(field.Id, StringComparison.OrdinalIgnoreCase));
+            _eSignInputValues[field.Id] = existing?.ValueDataUrl ?? string.Empty;
+        }
+
+        _requiredFields = contract.ESignFields.Count(x => x.Required);
+        _signedRequiredFields = contract.ESignFields.Count(x => x.Required && _submittedESignFieldIds.Contains(x.Id));
+    }
+
+    private static string GetDisplayBodyText(ContractDetailDto contract)
+    {
+        var body = NormalizeContractBodyText(contract.BodyJson);
+        if (LooksLikeBinaryBody(body))
+        {
+            return $"WrkPlan\n{contract.Title}\n\nContract Number: {contract.ContractNumber}\nVersion: {contract.Version}\n\nReadable content is being prepared. Use the preview panel on the right for the fully formatted PDF.";
+        }
+
+        return body;
+    }
+
+    private static bool LooksLikeBinaryBody(string value)
+    {
+        var normalized = NormalizeContractBodyText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
+
+        if (normalized.StartsWith("%PDF-", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var syntaxSample = normalized.Length > 900 ? normalized[..900] : normalized;
+        if (syntaxSample.Contains("/Filter/FlateDecode", StringComparison.OrdinalIgnoreCase)
+            || syntaxSample.Contains("endstream", StringComparison.OrdinalIgnoreCase)
+            || (syntaxSample.Contains(" obj", StringComparison.Ordinal) && syntaxSample.Contains("stream", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var sampleLength = Math.Min(normalized.Length, 450);
+        var nonPrintable = 0;
+        var replacementCount = 0;
+        for (var i = 0; i < sampleLength; i++)
+        {
+            var ch = normalized[i];
+            if (char.IsControl(ch) && ch != '\r' && ch != '\n' && ch != '\t')
+            {
+                nonPrintable++;
+            }
+
+            if (ch == '\uFFFD' || ch == '�')
+            {
+                replacementCount++;
+            }
+        }
+
+        return nonPrintable > 14 || replacementCount > 10;
+    }
+
+    private static string NormalizeContractBodyText(string? value)
+    {
+        return (value ?? string.Empty).TrimStart('\uFEFF', '\0', ' ', '\t', '\r', '\n');
     }
 }

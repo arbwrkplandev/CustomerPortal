@@ -1,5 +1,6 @@
 ﻿@inject SessionService Session
 @inject NavigationManager Nav
+@inject PortalApiClient Api
 
 <button class="brand brand-button" @onclick="NavigateHome" title="Home">
     <div class="brand-mark">WP</div>
@@ -93,6 +94,12 @@
         <NavLink class="menu-link" href="customerportal/contracts">
             <span class="nav-icon">&#128196;</span> <span class="nav-text">Contracts</span>
         </NavLink>
+        @if (_hasPendingAgreements)
+        {
+            <NavLink class="menu-link" href="portal/my-agreements">
+                <span class="nav-icon">&#128221;</span> <span class="nav-text">My Agreements</span>
+            </NavLink>
+        }
         <NavLink class="menu-link" href="customerportal/support-tickets">
             <span class="nav-icon">&#128220;</span> <span class="nav-text">Support Tickets</span>
         </NavLink>
@@ -118,15 +125,41 @@
     [Parameter] public EventCallback OnLogoutRequested { get; set; }
 
     private bool _ready;
+    private bool _hasPendingAgreements;
 
     protected override async Task OnInitializedAsync()
     {
         Session.Changed += OnSessionChanged;
         await Session.TryRestoreAsync();
+        await RefreshPendingAgreementsAsync();
         _ready = true;
     }
 
-    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+    private async void OnSessionChanged()
+    {
+        await RefreshPendingAgreementsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshPendingAgreementsAsync()
+    {
+        _hasPendingAgreements = false;
+        if (!Session.IsAuthenticated || Session.Auth?.Role != "CustomerAdmin")
+        {
+            return;
+        }
+
+        try
+        {
+            var contracts = await Api.GetContractsAsync();
+            _hasPendingAgreements = contracts?.Success == true
+                && (contracts.Data?.Any(x => string.Equals(x.ESignStatus, "AwaitingSignature", StringComparison.OrdinalIgnoreCase)) ?? false);
+        }
+        catch
+        {
+            _hasPendingAgreements = false;
+        }
+    }
 
     private void NavigateHome()
     {

@@ -23,6 +23,7 @@ public class AdminDbContext(DbContextOptions<AdminDbContext> options) : DbContex
     public DbSet<Amendment> Amendments => Set<Amendment>();
     public DbSet<AgreementAcknowledgement> AgreementAcknowledgements => Set<AgreementAcknowledgement>();
     public DbSet<Contract> Contracts => Set<Contract>();
+    public DbSet<ContractESignEntry> ContractESignEntries => Set<ContractESignEntry>();
     public DbSet<ContractDocument> ContractDocuments => Set<ContractDocument>();
     public DbSet<ContractAsset> ContractAssets => Set<ContractAsset>();
     public DbSet<ContractSignature> ContractSignatures => Set<ContractSignature>();
@@ -80,6 +81,13 @@ public class AdminDbContext(DbContextOptions<AdminDbContext> options) : DbContex
         modelBuilder.Entity<SubscriptionPlan>().Property(x => x.Price).HasPrecision(18, 2);
         modelBuilder.Entity<ContractSignature>().Property(x => x.PlacementXPercent).HasPrecision(5, 2);
         modelBuilder.Entity<ContractSignature>().Property(x => x.PlacementYPercent).HasPrecision(5, 2);
+        modelBuilder.Entity<Contract>().Property(x => x.ESignStatus).HasMaxLength(64);
+        modelBuilder.Entity<ContractESignEntry>().HasIndex(x => new { x.ContractId, x.FieldId }).IsUnique();
+        modelBuilder.Entity<ContractESignEntry>()
+            .HasOne<Contract>()
+            .WithMany()
+            .HasForeignKey(x => x.ContractId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<SupportTicket>().HasIndex(x => x.TicketNumber).IsUnique();
         modelBuilder.Entity<ContractDocument>().HasIndex(x => new { x.ContractId, x.IsLatest });

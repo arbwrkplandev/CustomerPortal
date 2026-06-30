@@ -1,0 +1,28 @@
+WrkPlan
+WrkPlan Service Agreement
+
+This Software Service Agreement ("Agreement") is entered into as of the Effective Date between WrkPlan Technologies Pvt. Ltd. ("Service Provider") and the Customer identified below ("Client").
+
+Contract Number: CNT-2026-002
+Version: v1
+Effective: 2026-06-30
+Expiry: 2027-06-30
+
+TERMS AND CONDITIONS OF SERVICE
+
+1. SCOPE OF SERVICES
+WrkPlan Technologies agrees to provide the Client with access to the WrkPlan ERP Platform including modules for workforce planning, project management, billing, and customer relationship management as outlined in the subscribed plan.
+
+2. SUBSCRIPTION & PAYMENT
+The Client agrees to pay the applicable subscription fees as per the selected plan on a monthly or annual basis. All payments are due within 7 days of invoice date. Late payments beyond 14 days may result in temporary suspension of services.
+
+3. DATA OWNERSHIP & PRIVACY
+All data entered by the Client into the WrkPlan platform remains the sole property of the Client. WrkPlan Technologies will not share, sell, or disclose Client data to any third party without prior written consent, except as required by law.
+
+4. SERVICE LEVEL
+WrkPlan Technologies will provide 99.5% monthly uptime, scheduled maintenance windows, and customer support during business hours.
+
+5. TERMINATION
+Either party may terminate this Agreement with 30 days written notice. Unused subscription fees will be refunded on a pro-rata basis if termination is initiated by WrkPlan Technologies.
+
+By signing below, both parties acknowledge they have read and agreed to these terms.

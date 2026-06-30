@@ -8,6 +8,20 @@
     <p>Welcome back &mdash; <strong>@Session.Auth?.Role</strong> on tenant <strong>@Session.TenantKey</strong></p>
 </div>
 
+@if (_showPendingAgreementBanner && _pendingAgreement is not null)
+{
+    <div class="panel" style="margin-bottom:0.9rem;padding:0.85rem 1rem;border:1px solid rgba(245,158,11,0.4);background:rgba(251,191,36,0.12);display:flex;justify-content:space-between;align-items:center;gap:0.65rem;flex-wrap:wrap;">
+        <div>
+            <div style="font-weight:700;">You have a pending agreement awaiting your signature.</div>
+            <div style="font-size:0.84rem;color:var(--text-secondary);">Contract @_pendingAgreement.ContractNumber expires @_pendingAgreement.ExpiryUtc.ToString("dd MMM yyyy").</div>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;">
+            <a href="/customerportal/contracts" class="btn-hero secondary" style="padding:0.55rem 1rem;font-size:0.84rem;">Open Contracts</a>
+            <button class="ghost-btn" style="padding:0.4rem 0.6rem;font-size:0.8rem;" @onclick="(() => _showPendingAgreementBanner = false)">Dismiss</button>
+        </div>
+    </div>
+}
+
 <!-- KPI Cards -->
 @if (Cards.Count == 0 && IsLoading)
 {
@@ -150,6 +164,8 @@ else if (Cards.Count > 0)
     private List<InvoiceSummaryDto> Invoices { get; set; } = [];
     private List<SupportTicketDto> Tickets { get; set; } = [];
     private bool IsLoading { get; set; } = true;
+    private bool _showPendingAgreementBanner = true;
+    private ContractSummaryDto? _pendingAgreement;
     private int TeamSize = 10;
     private int Pipeline = 100000;
     private string Recommendation = string.Empty;
@@ -175,6 +191,13 @@ else if (Cards.Count > 0)
         Announcements = (await Api.GetAnnouncementsAsync())?.Data ?? [];
         Invoices = (await Api.GetInvoicesAsync())?.Data ?? [];
         Tickets = (await Api.GetSupportTicketsAsync())?.Data ?? [];
+
+        var contracts = await Api.GetContractsAsync();
+        _pendingAgreement = contracts?.Data?
+            .Where(x => string.Equals(x.ESignStatus, "AwaitingSignature", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.ExpiryUtc)
+            .FirstOrDefault();
+
         IsLoading = false;
         StateHasChanged();
     }

@@ -2,10 +2,48 @@
 @page "/customerhub/quotes-contracts"
 @page "/customerhub/support-management"
 @page "/customerhub/integrations"
+@implements IDisposable
 @using Microsoft.AspNetCore.Components.Forms
 @inject PortalApiClient Api
 @inject SessionService Session
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<style>
+    .contract-body-display {
+        position: relative;
+        border-radius: 14px;
+        padding: 1rem;
+        background: linear-gradient(135deg, rgba(34, 197, 94, 0.09), rgba(6, 182, 212, 0.08));
+        border: 1px solid rgba(6, 182, 212, 0.3);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+        overflow: hidden;
+    }
+
+    .contract-body-display::before {
+        content: "";
+        position: absolute;
+        inset: -65%;
+        background: conic-gradient(from 0deg, rgba(34, 197, 94, 0.18), rgba(6, 182, 212, 0.16), rgba(34, 197, 94, 0.18));
+        animation: contract-body-sweep 9s linear infinite;
+        pointer-events: none;
+    }
+
+    .contract-body-text {
+        position: relative;
+        margin: 0;
+        white-space: pre-wrap;
+        line-height: 1.62;
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        font-family: 'Sora', sans-serif;
+    }
+
+    @@keyframes contract-body-sweep {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
 
 <div class="page-header">
     <h2>@Title</h2>
@@ -41,6 +79,34 @@
             <textarea @bind="_contractHeader" rows="2" style="margin-top:0.65rem;" placeholder="Header text"></textarea>
             <textarea @bind="_contractBody" rows="4" style="margin-top:0.55rem;" placeholder="Body/JSON content"></textarea>
 
+            <div class="panel" style="padding:0.8rem;margin-top:0.65rem;">
+                <div style="font-weight:700;margin-bottom:0.45rem;">E-Sign Fields</div>
+                @if (_eSignFields.Count == 0)
+                {
+                    <p style="margin:0;color:var(--text-muted);font-size:0.84rem;">No fields added yet.</p>
+                }
+                else
+                {
+                    <div style="display:flex;flex-direction:column;gap:0.45rem;">
+                        @foreach (var field in _eSignFields)
+                        {
+                            <div class="field-row" style="grid-template-columns:1.5fr 0.8fr 0.8fr auto;align-items:center;">
+                                <input @bind="field.Label" placeholder="e.g. Authorised Signatory" />
+                                <select @bind="field.Type">
+                                    <option value="signature">signature</option>
+                                    <option value="text">text</option>
+                                    <option value="date">date</option>
+                                </select>
+                                <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.84rem;"><input type="checkbox" @bind="field.Required" /> Required</label>
+                                <button type="button" class="ghost-btn" style="padding:0.3rem 0.55rem;" @onclick="(() => RemoveESignField(field.Id))">&#10005;</button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <button type="button" class="ghost-btn" style="margin-top:0.6rem;" @onclick="AddESignField">Add Field</button>
+            </div>
+
             <div class="field-row" style="grid-template-columns:1fr 1fr;margin-top:0.65rem;">
                 <input @bind="_effectiveDateText" placeholder="yyyy-MM-dd" />
                 <input @bind="_expiryDateText" placeholder="yyyy-MM-dd" />
@@ -73,10 +139,27 @@
                             <span class="list-label">@contract.ContractNumber - @contract.Title</span>
                             <span style="display:flex;gap:0.45rem;align-items:center;">
                                 <span class="tag">@contract.Status</span>
+                                @if (string.Equals(contract.ESignStatus, "AwaitingSignature", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="badge badge-warn">Awaiting Signature</span>
+                                }
+                                else if (string.Equals(contract.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="badge badge-ok">Signed Back Copy</span>
+                                }
+                                else
+                                {
+                                    <span class="tag">No E-Sign</span>
+                                }
+                                @if (string.Equals(contract.ESignStatus, "Draft", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(contract.ESignFieldsJson))
+                                {
+                                    <button type="button" class="ghost-btn" style="padding:0.3rem 0.6rem;font-size:0.78rem;" @onclick:stopPropagation="true" @onclick="(() => SendForSigningAsync(contract.Id))">Send for Signing</button>
+                                }
                                 @if (_selectedContract?.Id == contract.Id)
                                 {
                                     <span class="badge badge-ok">Selected</span>
                                 }
+                                <button type="button" class="ghost-btn" style="padding:0.3rem 0.6rem;font-size:0.78rem;" @onclick:stopPropagation="true" @onclick="(() => OpenContractModalAsync(contract.Id))">View</button>
                             </span>
                         </li>
                     }
@@ -98,6 +181,15 @@
                         <button class="ghost-btn" @onclick="TransitionContractAsync" disabled="@_contractBusy">Apply</button>
                     </div>
                 </div>
+
+                <div class="panel" style="padding:0.85rem;margin-top:0.8rem;">
+                    <div style="font-weight:700;">E-Sign Status: @_selectedContract.ESignStatus</div>
+                    @if (!string.IsNullOrWhiteSpace(_selectedContract.SignedPdfPath))
+                    {
+                        <button type="button" class="ghost-btn" style="margin-top:0.55rem;" @onclick="DownloadSignedPdfAsync">Download Signed PDF</button>
+                    }
+                    <button type="button" class="ghost-btn" style="margin-top:0.55rem;" @onclick="(() => OpenContractModalAsync(_selectedContract.Id))">Open Contract Window</button>
+                </div>
             }
 
             @if (!string.IsNullOrWhiteSpace(_contractMessage))
@@ -109,6 +201,86 @@
                 <div class="auth-status error" style="margin-top:0.7rem;">@_contractError</div>
             }
         </article>
+    </div>
+}
+
+@if (_showContractModal && _selectedContract is not null)
+{
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,0.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:1.2rem;">
+        <div class="panel" style="width:min(1120px,96vw);max-height:92vh;overflow:auto;padding:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.8rem;">
+                <div>
+                    <div style="font-weight:800;font-size:1.05rem;">@_selectedContract.ContractNumber - @_selectedContract.Title</div>
+                    <div style="font-size:0.82rem;color:var(--text-muted);">Status: @_selectedContract.Status | E-Sign: @_selectedContract.ESignStatus</div>
+                </div>
+                <button class="ghost-btn" @onclick="CloseContractModalAsync">Close</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:0.9rem;margin-top:0.9rem;">
+                <!-- toolbar -->
+                <div style="display:flex;gap:0.55rem;align-items:center;flex-wrap:wrap;">
+                    @if (_selectedContract.Versions.Count > 0)
+                    {
+                        <button class="ghost-btn" @onclick="(() => DownloadDocumentAsync(_selectedContract.Versions.OrderByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc).First().Id))">Download Latest</button>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_selectedContract.SignedPdfPath))
+                    {
+                        <button class="ghost-btn" @onclick="DownloadSignedPdfAsync">Download Signed PDF</button>
+                    }
+                    @if (_adminPreviewLoading)
+                    {
+                        <span style="font-size:0.82rem;color:var(--text-muted);">Loading preview…</span>
+                    }
+                </div>
+
+                <!-- two-panel preview -->
+                <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:0.9rem;">
+                    <div class="panel" style="padding:0.85rem;overflow:auto;max-height:74vh;">
+                        <div style="font-weight:700;margin-bottom:0.5rem;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04rem;">Contract Body</div>
+                        <div class="contract-body-display">
+                            <pre class="contract-body-text">@GetDisplayBodyText(_selectedContract)</pre>
+                        </div>
+                    </div>
+                    <div class="panel" style="padding:0.85rem;display:flex;flex-direction:column;gap:0.5rem;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+                            <div style="font-weight:700;font-size:0.9rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04rem;">Document Preview</div>
+                            @if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+                            {
+                                <a class="ghost-btn" style="padding:0.25rem 0.55rem;font-size:0.78rem;text-decoration:none;" href="@_contractPreviewDataUrl" target="_blank" rel="noopener">Open in new tab</a>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+                        {
+                            <object data="@_contractPreviewDataUrl" type="application/pdf" style="width:100%;flex:1;min-height:60vh;border:1px solid rgba(125,140,160,0.2);border-radius:10px;background:#fff;">
+                                <embed src="@_contractPreviewDataUrl" type="application/pdf" style="width:100%;height:100%;" />
+                                <div style="padding:1rem;color:var(--text-secondary);font-size:0.85rem;">
+                                    Inline PDF preview is not supported by this browser. <a href="@_contractPreviewDataUrl" target="_blank" rel="noopener">Open in new tab</a> or use the Download button above.
+                                </div>
+                            </object>
+                        }
+                        else if (_adminPreviewError)
+                        {
+                            <div style="padding:1.2rem;background:rgba(239,68,68,0.06);border-radius:10px;color:var(--text-secondary);font-size:0.88rem;">
+                                <div style="font-weight:700;margin-bottom:0.35rem;">Preview unavailable</div>
+                                <div>The document could not be loaded for inline view. Use the Download button above to open it.</div>
+                            </div>
+                        }
+                        else if (_adminPreviewLoading)
+                        {
+                            <div style="display:flex;align-items:center;justify-content:center;min-height:200px;">
+                                <div class="ticket-spinner"></div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="padding:1.2rem;background:rgba(99,102,241,0.05);border-radius:10px;color:var(--text-secondary);font-size:0.88rem;">
+                                No document version attached to this contract yet.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 }
 else if (RouteKey == "support-management")
@@ -266,12 +438,18 @@ else
     private string _expiryDateText = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
     private string _targetContractStatus = "Draft";
     private string _transitionNote = string.Empty;
+    private List<ESignFieldUi> _eSignFields = [];
     private bool _contractBusy;
     private string? _contractMessage;
     private string? _contractError;
     private string? _manualContractFileBase64;
     private string _manualContractFileName = "manual-contract.pdf";
     private string _manualContractContentType = "application/pdf";
+    private bool _showContractModal;
+    private string? _contractPreviewDataUrl;
+    private bool _adminPreviewLoading;
+    private bool _adminPreviewError;
+    private CancellationTokenSource? _contractPollingCts;
     private readonly List<string> _contractStatuses = ["Draft", "Sent to Customer", "Viewed", "Signature Pending", "Signed by Customer", "Signed by Both", "Completed", "Rejected/Needs Revision"];
 
     private List<SupportTicketDto> _supportTickets = [];
@@ -327,6 +505,7 @@ else
         if (RouteKey == "quotes-contracts")
         {
             await LoadContractDataAsync();
+            StartContractPolling();
         }
         else if (RouteKey == "support-management")
         {
@@ -343,7 +522,11 @@ else
         _profiles = profileResponse?.Data?.ToList() ?? [];
 
         var contractsResponse = await Api.GetContractsAsync();
-        _contracts = contractsResponse?.Data?.OrderByDescending(x => x.EffectiveUtc).ToList() ?? [];
+        _contracts = contractsResponse?.Data?
+            .OrderByDescending(x => string.Equals(x.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(x => string.Equals(x.ESignStatus, "AwaitingSignature", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(x => x.EffectiveUtc)
+            .ToList() ?? [];
 
         if (_contracts.Count > 0)
         {
@@ -355,7 +538,196 @@ else
     {
         var detail = await Api.GetContractDetailAsync(id);
         _selectedContract = detail?.Success == true ? detail.Data : null;
+
+        if (_selectedContract is not null)
+        {
+            _eSignFields = _selectedContract.ESignFields
+                .OrderBy(x => x.Order)
+                .Select(x => new ESignFieldUi
+                {
+                    Id = x.Id,
+                    Label = x.Label,
+                    Type = x.Type,
+                    Required = x.Required
+                })
+                .ToList();
+        }
+        else
+        {
+            _eSignFields = [];
+        }
+
         StateHasChanged();
+    }
+
+    private async Task OpenContractModalAsync(Guid contractId)
+    {
+        if (_selectedContract is null || _selectedContract.Id != contractId)
+        {
+            await SelectContractAsync(contractId);
+        }
+
+        if (_selectedContract is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+        {
+            await JS.InvokeVoidAsync("wrkplan.revokeObjectUrl", _contractPreviewDataUrl);
+        }
+
+        _contractPreviewDataUrl = null;
+        _adminPreviewLoading = true;
+        _adminPreviewError = false;
+        _showContractModal = true;
+        StateHasChanged();
+
+        (byte[] Bytes, string ContentType, string FileName)? file = null;
+        try
+        {
+            if (string.Equals(_selectedContract.ESignStatus, "Signed", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(_selectedContract.SignedPdfPath))
+            {
+                file = await Api.DownloadSignedPdfAsync(_selectedContract.Id);
+            }
+
+            if (file is null)
+            {
+                var latest = _selectedContract.Versions.OrderByDescending(x => x.IsLatest).ThenByDescending(x => x.CreatedUtc).FirstOrDefault();
+                if (latest is not null)
+                {
+                    file = await Api.DownloadContractDocumentAsync(latest.Id);
+                }
+            }
+
+            if (file is not null)
+            {
+                var base64 = Convert.ToBase64String(file.Value.Bytes);
+                _contractPreviewDataUrl = await JS.InvokeAsync<string>("wrkplan.createObjectUrlFromBytes", file.Value.ContentType, base64);
+            }
+        }
+        catch
+        {
+            _adminPreviewError = true;
+        }
+        finally
+        {
+            _adminPreviewLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CloseContractModalAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_contractPreviewDataUrl))
+        {
+            await JS.InvokeVoidAsync("wrkplan.revokeObjectUrl", _contractPreviewDataUrl);
+        }
+
+        _showContractModal = false;
+        _contractPreviewDataUrl = null;
+        _adminPreviewLoading = false;
+        _adminPreviewError = false;
+    }
+
+    private async Task DownloadDocumentAsync(Guid documentId)
+    {
+        _contractError = null;
+        var file = await Api.DownloadContractDocumentAsync(documentId);
+        if (file is null)
+        {
+            _contractError = "Unable to download contract document.";
+            return;
+        }
+
+        await JS.InvokeVoidAsync("wrkplan.downloadFileFromBytes", file.Value.FileName, file.Value.ContentType, Convert.ToBase64String(file.Value.Bytes));
+    }
+
+    private void StartContractPolling()
+    {
+        if (_contractPollingCts is not null)
+        {
+            return;
+        }
+
+        _contractPollingCts = new CancellationTokenSource();
+        var token = _contractPollingCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(20));
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        if (RouteKey == "quotes-contracts")
+                        {
+                            await LoadContractDataAsync();
+                        }
+                    });
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, token);
+    }
+
+    private void AddESignField()
+    {
+        _eSignFields.Add(new ESignFieldUi());
+    }
+
+    private void RemoveESignField(string id)
+    {
+        _eSignFields = _eSignFields.Where(x => !x.Id.Equals(id, StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private async Task SendForSigningAsync(Guid contractId)
+    {
+        _contractMessage = _contractError = null;
+
+        _contractBusy = true;
+        try
+        {
+            var response = await Api.SendContractAsync(new SendContractDto(contractId));
+            if (response?.Success == true)
+            {
+                _contractMessage = "Sent to customer for signing";
+                await LoadContractDataAsync();
+            }
+            else
+            {
+                _contractError = response?.Error?.Message ?? "Failed to send contract for signing.";
+            }
+        }
+        finally
+        {
+            _contractBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadSignedPdfAsync()
+    {
+        _contractError = null;
+        if (_selectedContract is null)
+        {
+            _contractError = "Select a contract first.";
+            return;
+        }
+
+        var file = await Api.DownloadSignedPdfAsync(_selectedContract.Id);
+        if (file is null)
+        {
+            _contractError = "Unable to download signed PDF.";
+            return;
+        }
+
+        await JS.InvokeVoidAsync("wrkplan.downloadFileFromBytes", file.Value.FileName, file.Value.ContentType, Convert.ToBase64String(file.Value.Bytes));
     }
 
     private async Task CreateGeneratedContractAsync()
@@ -388,6 +760,24 @@ else
 
             if (result?.Success == true)
             {
+                if (result.Data is not null && _eSignFields.Count > 0)
+                {
+                    var fieldsPayload = _eSignFields.Select((f, idx) => new ESignFieldDto(
+                        string.IsNullOrWhiteSpace(f.Id) ? $"field_{Guid.NewGuid():N}" : f.Id,
+                        f.Label,
+                        f.Type,
+                        f.Required,
+                        idx)).ToList();
+
+                    var addFieldsResult = await Api.AddESignFieldsAsync(new AddESignFieldsDto(result.Data.Id, fieldsPayload));
+                    if (addFieldsResult?.Success != true)
+                    {
+                        _contractError = addFieldsResult?.Error?.Message ?? "Contract created but failed to add e-sign fields.";
+                        await LoadContractDataAsync();
+                        return;
+                    }
+                }
+
                 _contractMessage = "Generated contract created.";
                 await LoadContractDataAsync();
             }
@@ -634,5 +1024,77 @@ else
             _supportBusy = false;
             StateHasChanged();
         }
+    }
+
+    private static string GetDisplayBodyText(ContractDetailDto contract)
+    {
+        var body = NormalizeContractBodyText(contract.BodyJson);
+        if (LooksLikeBinaryBody(body))
+        {
+            return $"WrkPlan\n{contract.Title}\n\nContract Number: {contract.ContractNumber}\nVersion: {contract.Version}\n\nReadable content is being prepared. Use the preview panel on the right for the fully formatted PDF.";
+        }
+
+        return body;
+    }
+
+    private static bool LooksLikeBinaryBody(string value)
+    {
+        var normalized = NormalizeContractBodyText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return false;
+        }
+
+        if (normalized.StartsWith("%PDF-", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var syntaxSample = normalized.Length > 900 ? normalized[..900] : normalized;
+        if (syntaxSample.Contains("/Filter/FlateDecode", StringComparison.OrdinalIgnoreCase)
+            || syntaxSample.Contains("endstream", StringComparison.OrdinalIgnoreCase)
+            || (syntaxSample.Contains(" obj", StringComparison.Ordinal) && syntaxSample.Contains("stream", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        var sampleLength = Math.Min(normalized.Length, 450);
+        var nonPrintable = 0;
+        var replacementCount = 0;
+        for (var i = 0; i < sampleLength; i++)
+        {
+            var ch = normalized[i];
+            if (char.IsControl(ch) && ch != '\r' && ch != '\n' && ch != '\t')
+            {
+                nonPrintable++;
+            }
+
+            if (ch == '\uFFFD' || ch == '�')
+            {
+                replacementCount++;
+            }
+        }
+
+        return nonPrintable > 14 || replacementCount > 10;
+    }
+
+    private static string NormalizeContractBodyText(string? value)
+    {
+        return (value ?? string.Empty).TrimStart('\uFEFF', '\0', ' ', '\t', '\r', '\n');
+    }
+
+    private sealed class ESignFieldUi
+    {
+        public string Id { get; set; } = $"field_{Guid.NewGuid():N}";
+        public string Label { get; set; } = string.Empty;
+        public string Type { get; set; } = "signature";
+        public bool Required { get; set; } = true;
+    }
+
+    public void Dispose()
+    {
+        _contractPollingCts?.Cancel();
+        _contractPollingCts?.Dispose();
+        _contractPollingCts = null;
     }
 }

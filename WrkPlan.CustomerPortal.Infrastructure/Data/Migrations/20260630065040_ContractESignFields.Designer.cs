@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WrkPlan.CustomerPortal.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using WrkPlan.CustomerPortal.Infrastructure.Data;
 namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
 {
     [DbContext(typeof(AdminDbContext))]
-    partial class AdminDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260630065040_ContractESignFields")]
+    partial class ContractESignFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -158,7 +161,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("60000000-0000-0000-0000-000000000001"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7671),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9121),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000001"),
                             IsDeleted = false,
                             IsGlobal = false,
@@ -170,7 +173,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("60000000-0000-0000-0000-000000000002"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7675),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9125),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000002"),
                             IsDeleted = false,
                             IsGlobal = false,
@@ -182,7 +185,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("60000000-0000-0000-0000-000000000003"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7677),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9133),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000003"),
                             IsDeleted = false,
                             IsGlobal = false,
@@ -431,6 +434,11 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ContractStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -465,6 +473,10 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
 
                     b.Property<DateTime?>("SentUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("SignatureFields")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("SignedPdfPath")
                         .HasColumnType("nvarchar(max)");
@@ -607,9 +619,6 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                     b.Property<DateTime?>("UpdatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<byte[]>("ValueBytes")
-                        .HasColumnType("varbinary(max)");
-
                     b.Property<string>("ValueDataUrl")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -620,6 +629,44 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("ContractESignEntries");
+                });
+
+            modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractFieldSignature", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ContractSignatureSessionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FieldId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SignatureDataUrl")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SignedByName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("SignedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ContractSignatureSessionId", "FieldId")
+                        .IsUnique();
+
+                    b.ToTable("ContractFieldSignatures");
                 });
 
             modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractSignature", b =>
@@ -663,6 +710,53 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ContractSignatures");
+                });
+
+            modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractSignatureSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CustomerProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsCompleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("SessionToken")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SignedPdfBlobPath")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionToken")
+                        .IsUnique();
+
+                    b.HasIndex("ContractId", "CustomerProfileId", "IsCompleted");
+
+                    b.ToTable("ContractSignatureSessions");
                 });
 
             modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractStatusHistory", b =>
@@ -763,7 +857,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                             City = "Dallas",
                             CompanyName = "Acme Manufacturing",
                             Country = "USA",
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7384),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8905),
                             IsPartnerPortalEnabled = false,
                             IsPortalActive = true,
                             Status = 1,
@@ -776,7 +870,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                             City = "Toronto",
                             CompanyName = "Northwind Finance",
                             Country = "Canada",
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7389),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8923),
                             IsPartnerPortalEnabled = false,
                             IsPortalActive = true,
                             Status = 1,
@@ -789,7 +883,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                             City = "London",
                             CompanyName = "BluePeak Services",
                             Country = "UK",
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7391),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8925),
                             IsPartnerPortalEnabled = false,
                             IsPortalActive = true,
                             Status = 1,
@@ -1007,9 +1101,9 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("40000000-0000-0000-0000-000000000001"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7602),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9057),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000001"),
-                            DueUtc = new DateTime(2026, 7, 10, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7605),
+                            DueUtc = new DateTime(2026, 7, 10, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9060),
                             InvoiceNumber = "INV-ACME-1001",
                             OutstandingAmount = 0m,
                             PaymentStatus = "Unpaid",
@@ -1019,9 +1113,9 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("40000000-0000-0000-0000-000000000002"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7608),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9062),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000002"),
-                            DueUtc = new DateTime(2026, 6, 27, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7609),
+                            DueUtc = new DateTime(2026, 6, 27, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9063),
                             InvoiceNumber = "INV-NW-1001",
                             OutstandingAmount = 0m,
                             PaymentStatus = "Unpaid",
@@ -1031,9 +1125,9 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("40000000-0000-0000-0000-000000000003"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7611),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9065),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000003"),
-                            DueUtc = new DateTime(2026, 7, 14, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7612),
+                            DueUtc = new DateTime(2026, 7, 14, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9066),
                             InvoiceNumber = "INV-BP-1001",
                             OutstandingAmount = 0m,
                             PaymentStatus = "Unpaid",
@@ -1777,40 +1871,40 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         {
                             Id = new Guid("30000000-0000-0000-0000-000000000001"),
                             AutoRenew = true,
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7424),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8961),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000001"),
                             Cycle = 1,
-                            EndDateUtc = new DateTime(2027, 2, 28, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7437),
+                            EndDateUtc = new DateTime(2027, 2, 28, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8973),
                             PlanName = "Growth",
                             Price = 1499m,
-                            RenewalDateUtc = new DateTime(2026, 7, 5, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7438),
-                            StartDateUtc = new DateTime(2026, 2, 28, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7430)
+                            RenewalDateUtc = new DateTime(2026, 7, 5, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8974),
+                            StartDateUtc = new DateTime(2026, 2, 28, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8965)
                         },
                         new
                         {
                             Id = new Guid("30000000-0000-0000-0000-000000000002"),
                             AutoRenew = true,
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7452),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8980),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000002"),
                             Cycle = 2,
-                            EndDateUtc = new DateTime(2027, 4, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7455),
+                            EndDateUtc = new DateTime(2027, 4, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8982),
                             PlanName = "Enterprise",
                             Price = 4999m,
-                            RenewalDateUtc = new DateTime(2026, 7, 27, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7456),
-                            StartDateUtc = new DateTime(2026, 4, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7454)
+                            RenewalDateUtc = new DateTime(2026, 7, 27, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8983),
+                            StartDateUtc = new DateTime(2026, 4, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8982)
                         },
                         new
                         {
                             Id = new Guid("30000000-0000-0000-0000-000000000003"),
                             AutoRenew = true,
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7529),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8985),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000003"),
                             Cycle = 3,
-                            EndDateUtc = new DateTime(2026, 11, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7532),
+                            EndDateUtc = new DateTime(2026, 11, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8987),
                             PlanName = "Core",
                             Price = 999m,
-                            RenewalDateUtc = new DateTime(2026, 7, 2, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7533),
-                            StartDateUtc = new DateTime(2025, 11, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7531)
+                            RenewalDateUtc = new DateTime(2026, 7, 2, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8988),
+                            StartDateUtc = new DateTime(2025, 11, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8986)
                         });
                 });
 
@@ -1894,7 +1988,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("31000000-0000-0000-0000-000000000001"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7562),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9018),
                             Cycle = 3,
                             Description = "Starter plan for lean teams",
                             FeaturesJson = "[\"Portal dashboard\",\"Standard support\",\"Onboarding toolkit\"]",
@@ -1905,7 +1999,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("31000000-0000-0000-0000-000000000002"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7568),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9023),
                             Cycle = 1,
                             Description = "Growth-focused plan with advanced analytics",
                             FeaturesJson = "[\"Everything in Core\",\"Advanced analytics\",\"Priority support\",\"API access\"]",
@@ -1916,7 +2010,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("31000000-0000-0000-0000-000000000003"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7571),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9026),
                             Cycle = 2,
                             Description = "Enterprise-grade controls and support",
                             FeaturesJson = "[\"Everything in Growth\",\"Dedicated success manager\",\"Custom SLAs\",\"White-glove onboarding\"]",
@@ -1980,7 +2074,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("50000000-0000-0000-0000-000000000001"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7639),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9090),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000001"),
                             Priority = "High",
                             Status = 1,
@@ -1991,7 +2085,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("50000000-0000-0000-0000-000000000002"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7644),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9094),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000002"),
                             Priority = "Normal",
                             Status = 1,
@@ -2002,7 +2096,7 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("50000000-0000-0000-0000-000000000003"),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7646),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(9097),
                             CustomerProfileId = new Guid("20000000-0000-0000-0000-000000000003"),
                             Priority = "Normal",
                             Status = 1,
@@ -2122,8 +2216,8 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
-                            ActivatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7244),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7241),
+                            ActivatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8649),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8646),
                             IsActive = true,
                             Name = "Acme Manufacturing",
                             TenantKey = "acme"
@@ -2131,8 +2225,8 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
-                            ActivatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7250),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7249),
+                            ActivatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8654),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8653),
                             IsActive = true,
                             Name = "Northwind Finance",
                             TenantKey = "northwind"
@@ -2140,8 +2234,8 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
-                            ActivatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7252),
-                            CreatedUtc = new DateTime(2026, 6, 30, 7, 22, 22, 126, DateTimeKind.Utc).AddTicks(7252),
+                            ActivatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8657),
+                            CreatedUtc = new DateTime(2026, 6, 30, 6, 50, 38, 987, DateTimeKind.Utc).AddTicks(8656),
                             IsActive = true,
                             Name = "BluePeak Services",
                             TenantKey = "bluepeak"
@@ -2305,6 +2399,24 @@ namespace WrkPlan.CustomerPortal.Infrastructure.Data.Migrations
                 });
 
             modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractESignEntry", b =>
+                {
+                    b.HasOne("WrkPlan.CustomerPortal.Domain.Entities.Contract", null)
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractFieldSignature", b =>
+                {
+                    b.HasOne("WrkPlan.CustomerPortal.Domain.Entities.ContractSignatureSession", null)
+                        .WithMany()
+                        .HasForeignKey("ContractSignatureSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("WrkPlan.CustomerPortal.Domain.Entities.ContractSignatureSession", b =>
                 {
                     b.HasOne("WrkPlan.CustomerPortal.Domain.Entities.Contract", null)
                         .WithMany()

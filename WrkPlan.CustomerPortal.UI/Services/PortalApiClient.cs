@@ -372,7 +372,64 @@ public class PortalApiClient(IHttpClientFactory httpClientFactory, SessionServic
             ?? response.Content.Headers.ContentDisposition?.FileName
             ?? $"contract-{documentId}.bin";
         fileName = fileName.Trim('"');
+        contentType = NormalizeBinaryContentType(contentType, fileName, bytes);
         return (bytes, contentType, fileName);
+    }
+
+    public async Task<ApiResponseDto<string>?> AddESignFieldsAsync(AddESignFieldsDto request, CancellationToken ct = default)
+    {
+        var client = CreateAuthenticatedClient();
+        var response = await client.PostAsJsonAsync("api/Contracts/esign-fields", request, ct);
+        return await response.Content.ReadFromJsonAsync<ApiResponseDto<string>>(cancellationToken: ct);
+    }
+
+    public async Task<ApiResponseDto<string>?> SendContractAsync(SendContractDto request, CancellationToken ct = default)
+    {
+        var client = CreateAuthenticatedClient();
+        var response = await client.PostAsJsonAsync("api/Contracts/send", request, ct);
+        return await response.Content.ReadFromJsonAsync<ApiResponseDto<string>>(cancellationToken: ct);
+    }
+
+    public async Task<ApiResponseDto<ESignSubmitResultDto>?> SubmitESignEntryAsync(SubmitESignEntryDto request, CancellationToken ct = default)
+    {
+        var client = CreateAuthenticatedClient();
+        var response = await client.PostAsJsonAsync("api/Contracts/esign-submit", request, ct);
+        return await response.Content.ReadFromJsonAsync<ApiResponseDto<ESignSubmitResultDto>>(cancellationToken: ct);
+    }
+
+    public async Task<(byte[] Bytes, string ContentType, string FileName)?> DownloadSignedPdfAsync(Guid contractId, CancellationToken ct = default)
+    {
+        var client = CreateAuthenticatedClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/Contracts/signed-pdf/{contractId}");
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "application/pdf";
+        var fileName = response.Content.Headers.ContentDisposition?.FileNameStar
+            ?? response.Content.Headers.ContentDisposition?.FileName
+            ?? $"signed-contract-{contractId}.pdf";
+        fileName = fileName.Trim('"');
+        contentType = NormalizeBinaryContentType(contentType, fileName, bytes);
+        return (bytes, contentType, fileName);
+    }
+
+    private static string NormalizeBinaryContentType(string contentType, string fileName, byte[] bytes)
+    {
+        if (string.Equals(contentType, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(contentType))
+        {
+            if (fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                || (bytes.Length >= 4 && bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46))
+            {
+                return "application/pdf";
+            }
+        }
+
+        return contentType;
     }
 
     // -- Support -------------------------------------------------------------

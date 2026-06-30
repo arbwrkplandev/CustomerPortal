@@ -2,6 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Parser;
+using iText.Layout;
+using iText.Layout.Element;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Claims;
@@ -13,6 +17,7 @@ using WrkPlan.CustomerPortal.Domain.Entities;
 using WrkPlan.CustomerPortal.Domain.Enums;
 using WrkPlan.CustomerPortal.Infrastructure.Data;
 using WrkPlan.CustomerPortal.Infrastructure.MultiTenancy;
+using WrkPlan.CustomerPortal.Infrastructure.Services;
 using WrkPlan.CustomerPortal.Shared.Dtos;
 
 namespace WrkPlan.CustomerPortal.API.Controllers;
@@ -267,6 +272,7 @@ public class SalesQuotesController : BaseApiController
 public class ContractsController(
     AdminDbContext dbContext,
     TenantContext tenantContext,
+    ContractESignWorkflowService eSignWorkflow,
     IWebHostEnvironment environment) : BaseApiController
 {
     private static readonly HashSet<string> AllowedStatuses =
@@ -318,6 +324,8 @@ public class ContractsController(
             x.Title,
             x.Version,
             x.Status,
+            x.ESignStatus,
+            x.ESignFieldsJson,
             x.EffectiveUtc,
             x.ExpiryUtc,
             x.SentUtc,
@@ -360,6 +368,9 @@ public class ContractsController(
             }
         }
 
+        // Ensure every contract has at least one downloadable PDF document so the preview pane always renders.
+        await EnsureContractDocumentExistsAsync(contract, ct);
+
         var versions = await dbContext.ContractDocuments
             .AsNoTracking()
             .Where(x => x.ContractId == id)
@@ -374,13 +385,25 @@ public class ContractsController(
             .Select(x => new ContractStatusHistoryDto(x.Id, x.FromStatus, x.ToStatus, x.Action, x.ActorEmail, x.ActorRole, x.CreatedUtc, x.Notes, x.IpAddress))
             .ToListAsync(ct);
 
+        var eSignFields = ParseESignFields(contract.ESignFieldsJson);
+        var eSignEntries = await dbContext.ContractESignEntries
+            .AsNoTracking()
+            .Where(x => x.ContractId == id)
+            .OrderBy(x => x.CreatedUtc)
+            .Select(x => new ESignEntryDto(x.FieldId, x.FieldLabel, x.ValueDataUrl, x.SignedByName, x.SignedAtUtc))
+            .ToListAsync(ct);
+
         var detail = new ContractDetailDto(
             contract.Id,
             contract.CustomerProfileId,
             contract.ContractNumber,
             contract.Title,
             ExtractHeader(contract.Title),
-            ExtractBody(contract.Title),
+            await ResolveContractBodyTextAsync(contract.Id, contract.Title, ct),
+            contract.ESignStatus,
+            contract.SignedPdfPath,
+            eSignFields,
+            eSignEntries,
             contract.Version,
             contract.Status,
             contract.EffectiveUtc,
@@ -454,6 +477,8 @@ public class ContractsController(
             Title = string.IsNullOrWhiteSpace(request.Title) ? "WrkPlan Service Agreement" : request.Title.Trim(),
             Version = string.IsNullOrWhiteSpace(request.Version) ? "v1" : request.Version.Trim(),
             Status = NormalizeStatus(request.Status),
+            ESignStatus = "Draft",
+            ESignFieldsJson = "[]",
             LastActionBy = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name
         };
         dbContext.Contracts.Add(contract);
@@ -471,7 +496,7 @@ public class ContractsController(
             VersionLabel = contract.Version,
             IsLatest = true,
             ContentType = "application/pdf",
-            SizeBytes = Encoding.UTF8.GetByteCount(content)
+            SizeBytes = new FileInfo(filePath).Length
         });
 
         await AddContractStatusHistoryAsync(contract, contract.Status, "Generated contract created", "Generated", ct);
@@ -483,6 +508,8 @@ public class ContractsController(
             contract.Title,
             contract.Version,
             contract.Status,
+            contract.ESignStatus,
+            contract.ESignFieldsJson,
             contract.EffectiveUtc,
             contract.ExpiryUtc,
             contract.SentUtc,
@@ -514,6 +541,8 @@ public class ContractsController(
             Title = "WrkPlan Manual Contract",
             Version = string.IsNullOrWhiteSpace(request.Version) ? "v1" : request.Version,
             Status = "Draft",
+            ESignStatus = "Draft",
+            ESignFieldsJson = "[]",
             LastActionBy = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name
         };
         dbContext.Contracts.Add(contract);
@@ -542,6 +571,8 @@ public class ContractsController(
             contract.Title,
             contract.Version,
             contract.Status,
+            contract.ESignStatus,
+            contract.ESignFieldsJson,
             contract.EffectiveUtc,
             contract.ExpiryUtc,
             contract.SentUtc,
@@ -595,6 +626,112 @@ public class ContractsController(
         if (target == "Completed") contract.CompletedUtc = DateTime.UtcNow;
         await dbContext.SaveChangesAsync(ct);
         return Ok(new ApiResponseDto<string>(true, target));
+    }
+
+    [Authorize(Policy = "AdminOnly")]
+    [HttpPost("esign-fields")]
+    public async Task<ActionResult<ApiResponseDto<string>>> AddESignFields([FromBody] AddESignFieldsDto request, CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(request.Fields ?? []);
+        var result = await eSignWorkflow.AddESignFieldsToContractAsync(request.ContractId, json, ct);
+        if (!result.Success)
+        {
+            return BadRequest(new ApiResponseDto<string>(false, null, new ApiErrorDto("esign_fields_failed", result.ErrorMessage ?? "Unable to add e-sign fields.")));
+        }
+
+        return Ok(new ApiResponseDto<string>(true, "ok"));
+    }
+
+    [Authorize(Policy = "AdminOnly")]
+    [HttpPost("send")]
+    public async Task<ActionResult<ApiResponseDto<string>>> SendForSigning([FromBody] SendContractDto request, CancellationToken ct)
+    {
+        var result = await eSignWorkflow.SendContractToCustomerAsync(request.ContractId, ct);
+        if (!result.Success)
+        {
+            return BadRequest(new ApiResponseDto<string>(false, null, new ApiErrorDto("send_failed", result.ErrorMessage ?? "Unable to send contract.")));
+        }
+
+        return Ok(new ApiResponseDto<string>(true, "sent"));
+    }
+
+    [Authorize]
+    [HttpPost("esign-submit")]
+    public async Task<ActionResult<ApiResponseDto<ESignSubmitResultDto>>> SubmitESignEntry([FromBody] SubmitESignEntryDto request, CancellationToken ct)
+    {
+        var contract = await dbContext.Contracts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == request.ContractId, ct);
+        if (contract is null)
+        {
+            return NotFound(new ApiResponseDto<ESignSubmitResultDto>(false, null, new ApiErrorDto("not_found", "Contract not found.")));
+        }
+
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? User.FindFirstValue("role") ?? string.Empty;
+        if (!string.Equals(role, "WrkPlanAdmin", StringComparison.OrdinalIgnoreCase))
+        {
+            var customerProfileId = await ResolveCustomerProfileIdAsync(ct);
+            if (contract.CustomerProfileId != customerProfileId)
+            {
+                return Forbid();
+            }
+        }
+
+        var submitResult = await eSignWorkflow.SubmitESignEntryAsync(request.ContractId, request.FieldId, request.FieldLabel, request.ValueDataUrl, request.SignedByName, ct);
+        if (!submitResult.Success)
+        {
+            return BadRequest(new ApiResponseDto<ESignSubmitResultDto>(false, null, new ApiErrorDto("submit_failed", submitResult.ErrorMessage ?? "Unable to submit e-sign entry.")));
+        }
+
+        var isComplete = await eSignWorkflow.AreAllRequiredFieldsSignedAsync(request.ContractId, ct);
+        string? signedPdfPath = null;
+        if (isComplete)
+        {
+            var finalized = await eSignWorkflow.FinalizeAndGeneratePdfAsync(request.ContractId, ct);
+            if (finalized.Success)
+            {
+                signedPdfPath = finalized.Data;
+
+                var mutable = await dbContext.Contracts.FirstOrDefaultAsync(x => x.Id == request.ContractId, ct);
+                if (mutable is not null)
+                {
+                    await AddContractStatusHistoryAsync(mutable, "Signed by Customer", "Customer completed e-sign fields", null, ct);
+                    await dbContext.SaveChangesAsync(ct);
+                }
+            }
+        }
+
+        return Ok(new ApiResponseDto<ESignSubmitResultDto>(true, new ESignSubmitResultDto(isComplete, signedPdfPath)));
+    }
+
+    [Authorize]
+    [HttpGet("signed-pdf/{contractId:guid}")]
+    public async Task<IActionResult> DownloadSignedPdf(Guid contractId, CancellationToken ct)
+    {
+        var contract = await dbContext.Contracts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        if (contract is null || string.IsNullOrWhiteSpace(contract.SignedPdfPath))
+        {
+            return NotFound();
+        }
+
+        var role = User.FindFirstValue(ClaimTypes.Role) ?? User.FindFirstValue("role") ?? string.Empty;
+        if (!string.Equals(role, "WrkPlanAdmin", StringComparison.OrdinalIgnoreCase))
+        {
+            var customerProfileId = await ResolveCustomerProfileIdAsync(ct);
+            if (contract.CustomerProfileId != customerProfileId)
+            {
+                return Forbid();
+            }
+        }
+
+        var root = environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+        var filePath = Path.Combine(root, contract.SignedPdfPath.Replace('/', Path.DirectorySeparatorChar));
+        if (!System.IO.File.Exists(filePath))
+        {
+            return NotFound();
+        }
+
+        var bytes = await System.IO.File.ReadAllBytesAsync(filePath, ct);
+        try { bytes = EnsurePdfBytes(bytes); } catch { /* serve raw on failure */ }
+        return File(bytes, "application/pdf", Path.GetFileName(filePath));
     }
 
     [Authorize(Roles = "CustomerAdmin")]
@@ -697,7 +834,7 @@ public class ContractsController(
             IsLatest = false,
             IsSigned = true,
             ContentType = "application/pdf",
-            SizeBytes = Encoding.UTF8.GetByteCount(generated)
+            SizeBytes = new FileInfo(signedPath).Length
         });
 
         contract.CustomerSignedUtc = DateTime.UtcNow;
@@ -726,7 +863,13 @@ public class ContractsController(
         }
 
         var bytes = await System.IO.File.ReadAllBytesAsync(doc.BlobPath, ct);
-        return File(bytes, doc.ContentType ?? "application/octet-stream", doc.FileName);
+        var contentType = doc.ContentType ?? "application/octet-stream";
+        if (string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            try { bytes = EnsurePdfBytes(bytes); } catch { /* serve raw on failure */ }
+        }
+
+        return File(bytes, contentType, doc.FileName);
     }
 
     private static string NormalizeStatus(string? value)
@@ -777,8 +920,158 @@ public class ContractsController(
     {
         var safe = $"{Guid.NewGuid():N}_{SanitizeFileName(fileName)}";
         var fullPath = Path.Combine(ContractRootPath, safe);
-        System.IO.File.WriteAllText(fullPath, content, Encoding.UTF8);
+        var bytes = BuildPdfBytesFromText(content);
+        System.IO.File.WriteAllBytes(fullPath, bytes);
+
+        try
+        {
+            System.IO.File.WriteAllText(fullPath + ".txt", content ?? string.Empty, new UTF8Encoding(false));
+        }
+        catch
+        {
+            // sidecar is best-effort; body fallback will still render contract metadata
+        }
+
         return fullPath;
+    }
+
+    private async Task EnsureContractDocumentExistsAsync(Contract contract, CancellationToken ct)
+    {
+        var hasDoc = await dbContext.ContractDocuments
+            .AsNoTracking()
+            .AnyAsync(x => x.ContractId == contract.Id, ct);
+
+        if (hasDoc)
+        {
+            // If a document row exists but the underlying file is missing or empty, regenerate from metadata.
+            var doc = await dbContext.ContractDocuments
+                .Where(x => x.ContractId == contract.Id)
+                .OrderByDescending(x => x.IsLatest)
+                .ThenByDescending(x => x.CreatedUtc)
+                .FirstOrDefaultAsync(ct);
+
+            if (doc is null)
+            {
+                return;
+            }
+
+            var blobPath = doc.BlobPath;
+            var fileMissing = string.IsNullOrWhiteSpace(blobPath) || !System.IO.File.Exists(blobPath);
+            var sizeStale = false;
+            if (!fileMissing)
+            {
+                try
+                {
+                    var actualSize = new FileInfo(blobPath!).Length;
+                    sizeStale = actualSize > 0 && doc.SizeBytes != actualSize;
+                    if (actualSize == 0)
+                    {
+                        fileMissing = true;
+                    }
+                }
+                catch
+                {
+                    fileMissing = true;
+                }
+            }
+
+            if (fileMissing)
+            {
+                var content = BuildContractMetadataFallback(contract, contract.Title);
+                var fileName = string.IsNullOrWhiteSpace(doc.FileName)
+                    ? $"{contract.ContractNumber}-{contract.Version}.pdf"
+                    : doc.FileName;
+                var newPath = WriteContractFile(content, fileName);
+                doc.BlobPath = newPath;
+                doc.SizeBytes = new FileInfo(newPath).Length;
+                doc.ContentType = "application/pdf";
+                await dbContext.SaveChangesAsync(ct);
+            }
+            else if (sizeStale)
+            {
+                doc.SizeBytes = new FileInfo(blobPath!).Length;
+                await dbContext.SaveChangesAsync(ct);
+            }
+
+            return;
+        }
+
+        // No document at all — generate one from contract metadata so preview/download always works.
+        var seedContent = BuildContractMetadataFallback(contract, contract.Title);
+        var seedFileName = $"{contract.ContractNumber}-{contract.Version}.pdf";
+        var seedPath = WriteContractFile(seedContent, seedFileName);
+
+        dbContext.ContractDocuments.Add(new ContractDocument
+        {
+            ContractId = contract.Id,
+            FileName = seedFileName,
+            BlobPath = seedPath,
+            DocumentType = "Generated",
+            VersionLabel = contract.Version,
+            IsLatest = true,
+            ContentType = "application/pdf",
+            SizeBytes = new FileInfo(seedPath).Length
+        });
+
+        await dbContext.SaveChangesAsync(ct);
+    }
+
+    private static byte[] BuildPdfBytesFromText(string content)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new PdfWriter(stream))
+        using (var pdf = new PdfDocument(writer))
+        using (var document = new Document(pdf))
+        {
+            var lines = (content ?? string.Empty)
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Split('\n');
+
+            foreach (var line in lines)
+            {
+                document.Add(new Paragraph(line));
+            }
+        }
+
+        return stream.ToArray();
+    }
+
+    private static bool IsPdfBytes(byte[] bytes)
+    {
+        return bytes.Length >= 4
+               && bytes[0] == 0x25
+               && bytes[1] == 0x50
+               && bytes[2] == 0x44
+               && bytes[3] == 0x46;
+    }
+
+    private static byte[] EnsurePdfBytes(byte[] bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            return bytes;
+        }
+
+        if (TryGetPdfPayload(bytes, out var payloadBytes))
+        {
+            return payloadBytes;
+        }
+
+        try
+        {
+            var text = Encoding.UTF8.GetString(bytes);
+            var pdfBytes = BuildPdfBytesFromText(text);
+            if (pdfBytes.Length > 0)
+            {
+                return pdfBytes;
+            }
+        }
+        catch
+        {
+            // iText conversion failed — return raw bytes so caller can still serve them
+        }
+
+        return bytes;
     }
 
     private string WriteContractBinary(byte[] bytes, string fileName)
@@ -813,9 +1106,179 @@ public class ContractsController(
         return title.StartsWith("HDR:", StringComparison.Ordinal) ? title : "WrkPlan";
     }
 
-    private static string ExtractBody(string title)
+    private async Task<string> ResolveContractBodyTextAsync(Guid contractId, string fallbackTitle, CancellationToken ct)
     {
-        return title.StartsWith("BODY:", StringComparison.Ordinal) ? title : "{}";
+        var contract = await dbContext.Contracts
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == contractId, ct);
+
+        var latestDoc = await dbContext.ContractDocuments
+            .AsNoTracking()
+            .Where(x => x.ContractId == contractId)
+            .OrderByDescending(x => x.IsLatest)
+            .ThenByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(ct);
+
+        // 1) Prefer sidecar .txt that we write alongside generated PDFs.
+        if (latestDoc is not null && !string.IsNullOrWhiteSpace(latestDoc.BlobPath))
+        {
+            var sidecar = latestDoc.BlobPath + ".txt";
+            if (System.IO.File.Exists(sidecar))
+            {
+                try
+                {
+                    var sidecarText = await System.IO.File.ReadAllTextAsync(sidecar, ct);
+                    if (!string.IsNullOrWhiteSpace(sidecarText))
+                    {
+                        return sidecarText.TrimStart('\uFEFF');
+                    }
+                }
+                catch
+                {
+                    // fall through
+                }
+            }
+        }
+
+        // 2) Try real PDF text extraction only if file is genuinely a PDF.
+        if (latestDoc is not null && !string.IsNullOrWhiteSpace(latestDoc.BlobPath) && System.IO.File.Exists(latestDoc.BlobPath))
+        {
+            try
+            {
+                var bytes = await System.IO.File.ReadAllBytesAsync(latestDoc.BlobPath, ct);
+                if (bytes.Length > 0 && TryGetPdfPayload(bytes, out var pdfPayload))
+                {
+                    var extracted = ExtractPdfText(pdfPayload);
+                    if (!string.IsNullOrWhiteSpace(extracted) && !LooksLikePdfSyntaxText(extracted))
+                    {
+                        return extracted;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore — fall through to metadata fallback
+            }
+        }
+
+        // 3) Safe metadata-based fallback. Never returns binary content.
+        return BuildContractMetadataFallback(contract, fallbackTitle);
+    }
+
+    private static string BuildContractMetadataFallback(Contract? contract, string fallbackTitle)
+    {
+        if (contract is null)
+        {
+            return fallbackTitle;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("WrkPlan");
+        sb.AppendLine(contract.Title);
+        sb.AppendLine();
+        sb.AppendLine($"Contract Number: {contract.ContractNumber}");
+        sb.AppendLine($"Version: {contract.Version}");
+        sb.AppendLine($"Effective: {contract.EffectiveUtc:yyyy-MM-dd}");
+        sb.AppendLine($"Expiry: {contract.ExpiryUtc:yyyy-MM-dd}");
+        sb.AppendLine();
+        sb.AppendLine("Document content is available in the preview panel on the right. Use the Download button to save the PDF.");
+        return sb.ToString();
+    }
+
+    private static bool TryGetPdfPayload(byte[] bytes, out byte[] payload)
+    {
+        payload = bytes;
+        if (bytes.Length < 4)
+        {
+            return false;
+        }
+
+        if (IsPdfBytes(bytes))
+        {
+            return true;
+        }
+
+        var maxScan = Math.Min(bytes.Length - 4, 1024);
+        for (var i = 0; i <= maxScan; i++)
+        {
+            if (bytes[i] == 0x25 && bytes[i + 1] == 0x50 && bytes[i + 2] == 0x44 && bytes[i + 3] == 0x46)
+            {
+                payload = bytes.AsSpan(i).ToArray();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool LooksLikePdfSyntaxText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (text.StartsWith("%PDF-", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var sampleLength = Math.Min(text.Length, 900);
+        var sample = text[..sampleLength];
+        return sample.Contains("/Filter/FlateDecode", StringComparison.OrdinalIgnoreCase)
+               || (sample.Contains(" obj", StringComparison.Ordinal) && sample.Contains("stream", StringComparison.OrdinalIgnoreCase))
+               || sample.Contains("endstream", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ExtractPdfText(byte[] bytes)
+    {
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            using var reader = new PdfReader(stream);
+            using var pdf = new PdfDocument(reader);
+            var sb = new StringBuilder();
+
+            for (var page = 1; page <= pdf.GetNumberOfPages(); page++)
+            {
+                var text = PdfTextExtractor.GetTextFromPage(pdf.GetPage(page));
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    if (sb.Length > 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine();
+                    }
+
+                    sb.Append(text.Trim());
+                }
+
+                // Keep payload reasonably small for the modal body panel.
+                if (sb.Length >= 12000)
+                {
+                    break;
+                }
+            }
+
+            return sb.ToString();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static List<ESignFieldDto> ParseESignFields(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<List<ESignFieldDto>>(json) ?? [];
+        }
+        catch
+        {
+            return [];
+        }
     }
 }
 
